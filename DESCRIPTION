@@ -1,0 +1,18 @@
+Package: repboxDRF
+Type: Package
+Title: Repbox Direct Replication Format
+Version: 0.1.0
+Authors@R: c(
+    person(
+      "Sebastian", "Kranz",
+      email = "sebastian.kranz@uni-ulm.de",
+      role = c("aut", "cre")
+    )
+  )
+Description: Tools to transform a Stata reproduction package into a format that facilitates direct
+  replications of regressions in Stata or R. Key idea is to identify data modification steps,
+  determine which can be translated to R. 
+License: GPL >= 2.0
+Encoding: UTF-8
+LazyData: true
+Depends: repboxUtils
