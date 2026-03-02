@@ -1,4 +1,61 @@
 
+drf_code_adapt = function(code_df, fun, ..., to_col="code", append_mode = c("overwrite", "left", "right")[1], vectorized=FALSE, just_cmd_types=NULL,just_runids=NULL, just_path_pos = c("start","end")[2], once_per_runid=TRUE){
+  restore.point("drf_adapt_code")
+
+  rows = NULL
+  if (!is.null(just_runids)) {
+    runids = just_runids
+  } else if (!is.null(just_cmd_types)) {
+    runids = unique(code_df$runid[code_df$cmd_type %in% cmd_types])
+  } else if (just_path_pos=="end") {
+    rows = which(code_df$pid==code_df$runid)
+    runids = code_df$runid[rows]
+    once_per_runid = TRUE
+  } else if (just_path_pos=="start") {
+    code_df = code_df %>%
+      group_by(pid) %>%
+      mutate(path_pos = 1:n()) %>%
+      ungroup()
+    rows = which(code_df$path_pos==1)
+    runids = code_df$runid[rows]
+  } else if (is.null(runid)) {
+    stop("Please provide just_runids, just_cmd_types or just_path_pos")
+  }
+
+  if (is.null(rows))
+    rows = match(runids, code_df$runid)
+
+  if (vectorized) {
+    new_code = do.call(fun, args=list(code_df = code_df[rows,], ...))
+  } else {
+    new_code = sapply(rows, function(row) {
+      do.call(fun, args=list(code_df = code_df[row,], ...))
+    })
+  }
+
+  if (!once_per_runid) {
+    ind = match(code_df$runid, runids)
+    to_rows = which(!is.na(ind))
+    new_code = new_code[ind[to_rows]]
+  } else {
+    to_rows = rows
+  }
+  if (append_mode=="overwrite") {
+    code_df[[to_col]][to_rows] = new_code
+  } else if (append_mode == "left") {
+    code_df[[ro_col]][to_rows] = paste0(new_code,code_df[[ro_col]][to_rows])
+  } else if (append_mode == "right") {
+    code_df[[ro_col]][to_rows] = paste0(code_df[[ro_col]][to_rows], new_code)
+  } else {
+    stop(paste0("unknown append_mode = ", appen_mode))
+  }
+  code_df
+
+}
+
+
+
+
 
 
 #' Replace file paths in cleaned Stata command lines

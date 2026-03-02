@@ -92,4 +92,13 @@ drf_find_pid = function(run_df,acmds = drf_acmds()) {
 
 require_project_dir = function(project_dir) {
   if (is.null(project_dir)) stop("You must supply a valid project_dir")
+  if (!dir.exists(project_dir)) stop("You must supply an existing project_dir")
+}
+
+
+require_drf_dir = function(drf_dir) {
+  if (is.null(drf_dir)) stop("You must supply a valid drf_dir")
+  project_dir = dirname(drf_dir)
+  if (dir.exists(project_dir)) stop("You must supply a valid drf_dir for an existing project_dir.")
+
 }

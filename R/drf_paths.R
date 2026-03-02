@@ -1,6 +1,6 @@
-# Ppidt of DAP function
+# part of DAP function
 #
-# Here we make the first ppidt: extraction of data paths
+# Here we make the first part: extraction of data paths
 # Notation is a bit old and not the same as in dap.R
 #
 # step: refers to a row in run_df
@@ -66,7 +66,7 @@ extract_run_tree_from_path_df = function(root, path_df) {
     select(-step_ind, root_ind, del)
 }
 
-# srun_df is a ppidt of run_df with a single node
+# srun_df is a part of run_df with a single node
 find_data_run_path = function(pid_row, srun_df, pid=NULL) {
   restore.point("find_data_run_path")
 
@@ -89,10 +89,10 @@ find_data_run_path = function(pid_row, srun_df, pid=NULL) {
   }
   #return(path)
 
-  # Adapt path: only keep load, mod, merge, scalar, or other analysis rows
+  # Adapt path: only keep load, mod, merge, xtset, scalar, or other analysis rows
   cmd_types = drf_stata_cmd_types()
 
-  allow = c(cmd_types$merge, cmd_types$mod,cmd_types$scalar, pid)
+  allow = c(cmd_types$merge, cmd_types$mod,cmd_types$scalar, cmd_types$xtset, pid)
   keep = seq_along(path) %in% c(1, length(path)) |
     srun_df$cmd[path] %in% allow |
     srun_df$runid[path] %in% pid
