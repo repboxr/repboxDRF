@@ -1,13 +1,4 @@
 
-# To do: variant that is faster for selected paths
-drf_load = function(project_dir, parcels=list()) {
-  project_dir = normalizePath(project_dir)
-  drf = list(project_dir = project_dir, drf_dir = file.path(project_dir, "drf"), parcels = parcels)
-  drf$parcels = repboxDB::repdb_load_parcels(project_dir, "stata_run_cmd", parcels=parcels)
-  drf$run_df = drf_make_run_df(drf=drf)
-  drf$path_df = drf_load_path_df(drf=drf)
-  drf
-}
 
 drf_make_path_index = function(path_df) {
   path_df$.ROW = 1:NROW(path_df)

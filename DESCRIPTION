@@ -15,4 +15,4 @@ Description: Tools to transform a Stata reproduction package into a format that 
 License: GPL >= 2.0
 Encoding: UTF-8
 LazyData: true
-Depends: repboxUtils, repboxDB
+Depends: repboxUtils, repboxDB, stata2r

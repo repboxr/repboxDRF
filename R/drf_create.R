@@ -17,7 +17,7 @@ has_drf = function(project_dir) {
 }
 
 drf_create = function(project_dir, parcels=list(), acmds = drf_acmds(), overwrite=FALSE, move_from_mod=TRUE) {
-  restore.point("drf_init")
+  restore.point("drf_create")
 
   if (!overwrite & has_drf(project_dir)) {
     return(NULL)
@@ -28,7 +28,7 @@ drf_create = function(project_dir, parcels=list(), acmds = drf_acmds(), overwrit
   drf$parcels = repboxDB::repdb_load_parcels(project_dir, "stata_run_cmd", parcels=parcels)
 
 
-  run_df = drf_make_run_df(drf=drf)
+  run_df = drf_make_run_df(drf=drf,add_rcode = FALSE)
   if (is.null(run_df)) {
     cat(("\nNo stata_run_cmd parcel exists, cannot create drf.\n"))
     return(NULL)
@@ -40,38 +40,20 @@ drf_create = function(project_dir, parcels=list(), acmds = drf_acmds(), overwrit
 
   drf$path_df = drf_make_paths(drf)
   drf$index_df = drf_save_path_df(drf=drf)
-
-  drf$ap_df = drf_path_df_to_ap_df(drf$path_df, drf$run_df)
+  drf$runids = drf_runids(drf)
 
   drf_copy_org_data(drf=drf, move_from_mod=move_from_mod)
 
+  drf = drf_make_r_trans_parcel(drf)
   invisible(drf)
 }
 
-drf_make_run_df = function(project_dir = drf$project_dir, parcels=drf$parcels, drf = list(parcels=list())) {
-  restore.point("drf_make_run_df")
+# gets run_df from parcels including up-to-date cmd_type column
+repbox_get_run_df = function(project_dir, parcels=list()) {
   parcels = repboxDB::repdb_load_parcels(project_dir, "stata_run_cmd", parcels=parcels)
-  run_df = parcels$stata_run_cmd$stata_run_cmd
-
-  start_time = run_df$start_time[1]
-  run_df$ok = !is.true(run_df$errcode != 0) & !is.true(run_df$missing_data)
-  run_df$start_sec = sec_since_start(run_df$start_time, start_time)
-  run_df$end_sec = sec_since_start(run_df$end_time, start_time)
-  run_df$dur_sec =run_df$end_sec - run_df$start_sec
-
+  run_df = parcels$stata_run_cmd
   cmd_types = drf_stata_cmd_types_vec()
   run_df$cmd_type = cmd_types[run_df$cmd]
-
-  rows = run_df$cmd_type == "reg"
-  inds = which(has.substr(run_df$cmdline[rows]," _I"))
-  run_df$is_I_reg = FALSE
-  run_df$is_I_reg[rows[inds]] = TRUE
-
-  rows = run_df$cmd_type %in% c("reg","mod")
-  inds = which(stri_detect_regex(run_df$cmdline[rows],"(^|[ \\:])[ ]*xi[ \\:]"))
-  run_df$is_xi = FALSE
-  run_df$is_xi[inds] = TRUE
-
   run_df
 }
 

@@ -1,3 +1,5 @@
+# Functions related to data set
+# already needed when generating Stata code
 drf_run_df_add_data_paths = function(run_df = drf$run_df, drf_dir = drf$drf_dir, drf = NULL) {
   run_df$org_data_path = ifelse(!nzchar(run_df$found_path), NA_character_,file.path(drf_dir, "org_data", run_df$found_path))
   run_df$has_org_data = file.exists(run_df$org_data_path)
@@ -49,39 +51,14 @@ drf_replace_run_df_code_data_path = function(run_df =drf$run_df, drf_dir = drf$d
   run_df
 }
 
-
-
-# TO DO: Need better time estimates and also size estimates
-drf_suggest_caches = function(ap_df=drf$ap_df, drf=NULL) {
-  if (is.null(ap_df)) cat("\nYou need an ap_df")
-
-  ap_df = ap_df %>%
-    group_by(pid) %>%
-    mutate(
-      dur_sec = na.val(dur_sec, 0),
-      path_sec = cumsum(dur_sec)
-    ) %>%
-    ungroup()
-
-  sec_df = ap_df %>%
-    group_by(runid) %>%
-    summarize(
-      num_paths = n(),
-      sum_sec = sum(path_sec)
-    ) %>%
-    arrange(desc(sum_sec))
-
-}
-
-
-
-drf_copy_org_data = function(project_dir=drf$project_dir, ap_df=drf$ap_df, move_from_mod=TRUE, drf=NULL, overwrite=FALSE) {
+drf_copy_org_data = function(project_dir=drf$project_dir, run_df=drf$run_df, runids=drf_runids(drf),  move_from_mod=TRUE, drf=NULL, overwrite=FALSE) {
   restore.point("drf_copy_org_data")
-  stop()
+
   require_project_dir(project_dir)
   if (!dir.exists(project_dir)) stop()
-  data_files = ap_df %>%
-    filter(cmd_type %in% c("load","merge")) %>%
+
+  data_files = run_df %>%
+    filter(runid %in% runids, cmd_type %in% c("load","merge")) %>%
     pull(found_path) %>%
     unique()
 

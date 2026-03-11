@@ -6,7 +6,7 @@ example = function() {
     rstudioapi::filesPaneNavigate(project_dir)
 
   drf = drf_load(project_dir)
-  drf$code_df = code_df = drf_stata_code_df(drf, path_merge = "load_natural")
+  drf$sc_df = sc_df = drf_stata_code_df(drf, path_merge = "load_natural")
 
 
 }
@@ -66,8 +66,8 @@ drf_stata_code_df = function(drf,runids=NULL, path_merge = c("none", "load", "na
       rdf %>%
         transmute(pid=pid,runid=runid, code=code, pre="", post="", cmd_type=cmd_type, cmd=cmd, is_target = runid==pid, aux_cmd_type="")
     })
-    code_df = bind_rows(code_li)
-    return(code_df)
+    sc_df = bind_rows(code_li)
+    return(sc_df)
   }
   ps_df = path_df %>%
     group_by(pid) %>%
@@ -122,8 +122,8 @@ drf_stata_code_df = function(drf,runids=NULL, path_merge = c("none", "load", "na
         rdf$aux_cmd_type[1] = paste0("restore")
       }
     })
-    code_df = bind_rows(code_li)
-    return(code_df)
+    sc_df = bind_rows(code_li)
+    return(sc_df)
   }
 
   # merge_natural==TRUE
@@ -175,13 +175,13 @@ drf_stata_code_df = function(drf,runids=NULL, path_merge = c("none", "load", "na
     }
     code_li[[counter]] = rdf
   }
-  code_df = bind_rows(code_li)
-  all(pids %in% code_df$pid)
-  code_df
+  sc_df = bind_rows(code_li)
+  all(pids %in% sc_df$pid)
+  sc_df
 }
 
 # Add to Stata code command that save data set caches as dta after some command
-drf_add_code_store_cache = function(runids, code_df=drf$code_df,drf_dir = drf$drf_dir, drf = NULL) {
+drf_add_code_store_cache = function(runids, sc_df=drf$sc_df,drf_dir = drf$drf_dir, drf = NULL) {
   restore.point("drf_add_code_store_cache")
   require_drf_dir(drf_dir)
 
@@ -190,25 +190,25 @@ drf_add_code_store_cache = function(runids, code_df=drf$code_df,drf_dir = drf$dr
 
   cache_files = file.path(cache_dir, paste0("cache_", runids, ".dta"))
 
-  # Will only match first time runid appears in code_df
+  # Will only match first time runid appears in sc_df
   # but that is what we want: caching multiple times makes no sense
-  rows = match(runids, code_df$runid)
+  rows = match(runids, sc_df$runid)
 
   txt = paste0(txt,'\nsave "', cache_files,'", replace\n')
-  code_df$post[rows] = paste0(txt, code_df$post[rows])
-  code_df
+  sc_df$post[rows] = paste0(txt, sc_df$post[rows])
+  sc_df
 }
 
-drf_add_code_store_if_rows = function(runids, code_df=drf$code_df,drf_dir=drf$drf_dir, only_fun_if_rows = TRUE, drf = NULL, outdir = file.path(drf_dir, "if_rows")) {
+drf_add_code_store_if_rows = function(runids, sc_df=drf$sc_df,drf_dir=drf$drf_dir, only_fun_if_rows = TRUE, drf = NULL, outdir = file.path(drf_dir, "if_rows")) {
   restore.point("drf_add_code_store_if_rows")
 
-  rows = match(runids, code_df$runid)
-  cmdline = code_df$cmdline[rows]
+  rows = match(runids, sc_df$runid)
+  cmdline = sc_df$cmdline[rows]
 
   has_if = stringi::stri_detect_regex(cmdline, "\\bif\\b")
   rows = rows[has_if]
-  if (length(rows)==0) return(code_df)
-  cmdline = code_df$cmdline[rows]
+  if (length(rows)==0) return(sc_df)
+  cmdline = sc_df$cmdline[rows]
 
   tab = repboxStata::repbox.re.cmdlines.to.tab(cmdline)
   if_str = tab$if_arg
@@ -218,10 +218,10 @@ drf_add_code_store_if_rows = function(runids, code_df=drf$code_df,drf_dir=drf$dr
   if (only_fun_if_rows) {
     use = has.substr(if_str, "(")
     rows = rows[use]
-    if (length(rows)==0) return(code_df)
+    if (length(rows)==0) return(sc_df)
     if_str = use
   }
-  runids = code_df$runid[rows]
+  runids = sc_df$runid[rows]
 
   if (!dir.exists(outdir))
     dir.create(dir, recursive = TRUE)
@@ -229,7 +229,7 @@ drf_add_code_store_if_rows = function(runids, code_df=drf$code_df,drf_dir=drf$dr
 
   # TO CHECK restore / preserve or deletion of created row
   file = paste0(outdir, "/ifrows_", runids, ".dta")
-  code_df$pre[rows]  = paste0("\n
+  sc_df$pre[rows]  = paste0("\n
 // Store row number from if condition
 preserve
 gen r0W_ox_zA___2G__nUm__ = _n
@@ -237,13 +237,13 @@ capture noisily keep if ",if_str, "
 keep r0W_ox_zA___2G__nUm__
 capture noisily save \"",file, "\", replace
 restore\n",
-    code_df$pre[row])
-  code_df
+    sc_df$pre[row])
+  sc_df
 }
 
 
-drf_code_stata_path_header = function(code_df, header_tpl = "\n***** Path for runid={{pid}} ****\n\n", to_col="pre", append_mode = c("overwrite", "left", "right")[1]) {
-  drf_code_adapt(code_df, function(code_df) {
+drf_code_stata_path_header = function(sc_df, header_tpl = "\n***** Path for runid={{pid}} ****\n\n", to_col="pre", append_mode = c("overwrite", "left", "right")[1]) {
+  drf_code_adapt(sc_df, function(code_df, ...) {
     stringi::stri_replace_all_fixed(header_tpl,"{{pid}}", code_df$pid)
   },to_col=to_col, append_mode=append_mode, just_path_pos="start")
 

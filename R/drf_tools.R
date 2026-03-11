@@ -33,6 +33,8 @@ drf_code_adapt = function(code_df, fun, ..., to_col="code", append_mode = c("ove
     })
   }
 
+  restore.point("inbetweenlksjds")
+
   if (!once_per_runid) {
     ind = match(code_df$runid, runids)
     to_rows = which(!is.na(ind))
