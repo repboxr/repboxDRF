@@ -73,7 +73,10 @@ drf_get_data = function(runid=pid, drf, filtered=TRUE,before=TRUE, update_rcode=
   }
 
   if (filtered) {
-    cat("\nWarning: Data filtering is not yet implemented.")
+    filter_code = drf_get_filter_code(pid, drf)
+    if (length(filter_code) > 0) {
+      rcode = c(rcode, filter_code)
+    }
   }
 
   # Simple execution of R code
