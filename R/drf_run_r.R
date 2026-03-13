@@ -82,6 +82,7 @@ drf_get_data = function(runid=pid, drf, filtered=TRUE,before=TRUE, update_rcode=
   # Simple execution of R code
   # We may change to something more sophisticated later
   rcode_call = parse(text = paste0(rcode, collapse="\n"))
+  exec_env$project_dir = drf$project_dir
   res = eval(rcode_call,envir = exec_env)
   res
 }
