@@ -61,7 +61,7 @@ drf_run_df_create_rcode = function(run_df=drf$run_df, runids=drf_runids(drf), ov
 
   inds = rows[run_df$cmd_type[rows] %in% c("load")]
   if (length(inds)>0) {
-    code = paste0('dat = drf_load_data(project_dir, "', file.path(run_df$found_path[inds]) ,'")')
+    code = paste0('data = drf_load_data(project_dir, "', file.path(run_df$found_path[inds]) ,'")')
     run_df$rcode[inds] = code
   }
   run_df$rcode = na.val(run_df$rcode, "")

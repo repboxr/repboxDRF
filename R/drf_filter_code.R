@@ -24,6 +24,7 @@ drf_get_filter_code = function(runid, drf, parcels=drf$parcels) {
   # 1. Translate `if_str` via stata2r dummy keep command
   if (length(if_str) > 0 && nzchar(if_str[1])) {
     fake_cmd = paste0("keep ", if_str[1])
+    restore.point("drf_get_filter_code_if")
 
     # stata2r natively translates `keep if...` to `dat <- dat %>% filter(...)`
     r_df = try(stata2r::do_to_r(fake_cmd)$r_df, silent = TRUE)
@@ -31,6 +32,7 @@ drf_get_filter_code = function(runid, drf, parcels=drf$parcels) {
     if (!inherits(r_df, "try-error") && !is.null(r_df) && NROW(r_df) > 0) {
       filter_code = c(filter_code, r_df$r_code[1])
     } else {
+      restore.point("drf_get_filter_code_if_error")
       repbox_problem(
         msg = paste0("Failed to translate if condition for runid ", runid),
         type = "filter_translation_error",
