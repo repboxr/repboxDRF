@@ -57,11 +57,3 @@ drf_get_filter_code = function(runid, drf, parcels=drf$parcels) {
 
   return(filter_code)
 }
-
-extract_stata_if_in_str = function(cmdline) {
-
-  if_str = cp$content[cp$part == "if_str"]
-  in_str = cp$content[cp$part == "in_str"]
-
-
-}
