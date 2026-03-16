@@ -45,9 +45,9 @@ drf_code_adapt = function(code_df, fun, ..., to_col="code", append_mode = c("ove
   if (append_mode=="overwrite") {
     code_df[[to_col]][to_rows] = new_code
   } else if (append_mode == "left") {
-    code_df[[ro_col]][to_rows] = paste0(new_code,code_df[[ro_col]][to_rows])
+    code_df[[to_col]][to_rows] = paste0(new_code,code_df[[to_col]][to_rows])
   } else if (append_mode == "right") {
-    code_df[[ro_col]][to_rows] = paste0(code_df[[ro_col]][to_rows], new_code)
+    code_df[[to_col]][to_rows] = paste0(code_df[[to_col]][to_rows], new_code)
   } else {
     stop(paste0("unknown append_mode = ", appen_mode))
   }

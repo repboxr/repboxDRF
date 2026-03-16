@@ -237,7 +237,7 @@ capture noisily keep if ",if_str, "
 keep r0W_ox_zA___2G__nUm__
 capture noisily save \"",file, "\", replace
 restore\n",
-    sc_df$pre[row])
+    sc_df$pre[rows])
   sc_df
 }
 
