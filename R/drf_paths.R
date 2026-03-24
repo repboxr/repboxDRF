@@ -66,18 +66,19 @@ extract_run_tree_from_path_df = function(root, path_df) {
     select(-step_ind, root_ind, del)
 }
 
-# srun_df is a part of run_df with a single node
+
+
+# FILE: repboxDRF/R/drf_paths.R
+# Replace the existing find_data_run_path function:
+
 find_data_run_path = function(pid_row, srun_df, pid=NULL) {
   restore.point("find_data_run_path")
 
-
-  # All runid in same load block until
-  # pid
+  # All runid in same load block until pid
   path = which(srun_df$load_block == srun_df$load_block[pid_row] & srun_df$.ROW <= pid_row)
 
-  # If we start with a restore command
-  # then jump to previous preserve and then
-  # add all rows with the same load_block
+  # If we start with a restore command then jump to previous preserve
+  # and then add all rows with the same load_block
   while (TRUE) {
     if (srun_df$cmd[path[1]] == "restore") {
       pr_row = srun_df$preserve_row[path[1]]
@@ -87,32 +88,24 @@ find_data_run_path = function(pid_row, srun_df, pid=NULL) {
     }
     break
   }
-  #return(path)
 
-  # Adapt path: only keep load, mod, merge, xtset, scalar, or other analysis rows
+  # Adapt path: Use stata2r to accurately determine which commands have data
+  # manipulation side effects or are relied upon by later commands.
+  stata_code = srun_df$cmdline[path]
+  stata_code = gsub("\n", " ", stata_code, fixed = TRUE)
+  cmd_df = stata2r::s2r_check_mod(stata_code)
+
   cmd_types = drf_stata_cmd_types()
+  allow = c(cmd_types$scalar, cmd_types$xtset)
 
-  allow = c(cmd_types$merge, cmd_types$mod,cmd_types$scalar, cmd_types$xtset, pid)
   keep = seq_along(path) %in% c(1, length(path)) |
+    cmd_df$is_mod |
     srun_df$cmd[path] %in% allow |
     srun_df$runid[path] %in% pid
 
   path = path[keep]
 
-  # Check in more detail whether possible mods
-  # candiate indeed modifies
-  pos_keep = pide_possible_mod_cmd_real_mod(srun_df[path,]) |
-    srun_df$cmd[path] %in% allow |
-    srun_df$runid[path] %in% pid
-
-  path = path[pos_keep]
-
   return( tibble(pid=srun_df$runid[pid_row], runid=srun_df$runid[path]))
-
-}
-
-estimate_path_time = function(run_df, path_rows) {
-
 }
 
 

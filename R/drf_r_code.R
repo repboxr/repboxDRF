@@ -34,9 +34,10 @@ drf_make_r_trans_parcel = function(drf) {
 # They are currently always included in path since
 # later regressions may need them if r() or something is used from it.
 
+
+
 drf_run_df_create_rcode = function(run_df=drf$run_df, runids=drf_runids(drf), overwrite=TRUE, drf=NULL) {
   restore.point("drf_run_df_create_rcode")
-
 
   if (!has_col(run_df, "rcode")) {
     run_df$rcode = rep("", NROW(run_df))
@@ -46,28 +47,42 @@ drf_run_df_create_rcode = function(run_df=drf$run_df, runids=drf_runids(drf), ov
   } else {
     rows = seq_len(NROW(run_df))
   }
+  rows = sort(unique(rows[!is.na(rows)]))
 
+  update_rows = rows
   if (!overwrite) {
-    rows = rows[run_df$rcode[rows] == ""]
+    update_rows = rows[run_df$rcode[rows] == ""]
   }
 
-  if (length(rows)==0) return(run_df)
+  if (length(update_rows)==0) return(run_df)
 
-  inds = rows[run_df$cmd_type[rows] %in% c("mod")]
-  if (length(inds)>0) {
-    mod_df = stata2r::do_to_r(run_df$cmdline[inds])$r_df
-    run_df$rcode[inds] = mod_df$r_code
-  }
+  # Translate the execution trace up to the max row so `stata2r` maintains full context
+  max_row = max(update_rows)
+  stata_code = run_df$cmdline[1:max_row]
 
-  inds = rows[run_df$cmd_type[rows] %in% c("load")]
+  # IMPORTANT: Replace internal newlines with spaces to keep 1-to-1 mapping with rows
+  stata_code = gsub("\n", " ", stata_code, fixed = TRUE)
+
+  r_df = stata2r::do_to_r(stata_code, return_df = TRUE)
+
+  translated_code = r_df$r_code[update_rows]
+  run_df$rcode[update_rows] = ifelse(is.na(translated_code), "", translated_code)
+
+  # Overwrite 'load' commands with repbox's own data loading logic
+  inds = update_rows[run_df$cmd_type[update_rows] %in% c("load")]
   if (length(inds)>0) {
-    code = paste0('data = drf_load_data(project_dir, "', file.path(run_df$found_path[inds]) ,'")')
+    code = paste0(
+      'data = drf_load_data(project_dir, "', file.path(run_df$found_path[inds]) ,'")\n',
+      'data$stata2r_original_order_idx = seq_len(nrow(data))\n',
+      'assign("has_original_order_idx", TRUE, envir = stata2r::stata2r_env)'
+    )
     run_df$rcode[inds] = code
   }
   run_df$rcode = na.val(run_df$rcode, "")
 
   run_df
 }
+
 
 drf_rcode_df = function(drf,runids=NULL, path_merge = c("none", "load", "natural", "load_natural")[4], update_rcode = FALSE) {
   restore.point("drf_rcode_df")

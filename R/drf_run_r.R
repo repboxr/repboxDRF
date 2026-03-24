@@ -36,7 +36,8 @@ example = function() {
 #' @param update_rcode Set TRUE if the repbox code for R translation has been updated and the old R code is no longer up-to-date. Mostly relevant during development of the repbox package.
 #' @param exec_env in which environment shall the R code that loads and modifies the data be evaluated, default a new env.
 #' @param pid Alias for runid in this command (pid stands for path ID which is the runid of the final command in a path from path_df)
-drf_get_data = function(runid=pid, drf, filtered=TRUE,before=TRUE, update_rcode=FALSE, exec_env = new.env(parent = globalenv()), pid=NULL) {
+
+drf_get_data = function(runid=pid, drf, filtered=TRUE, before=TRUE, update_rcode=FALSE, exec_env = new.env(parent = globalenv()), pid=NULL) {
   restore.point("drf_get_data")
   if (is.null(runid)) {
     stop("Specify a runid (or pid as synonym).")
@@ -48,23 +49,22 @@ drf_get_data = function(runid=pid, drf, filtered=TRUE,before=TRUE, update_rcode=
   path_df = drf$path_df
   pid = first(path_df$pid[path_df$runid == runid])
 
-  path_df = path_df[path_df$pid == pid,]
+  path_df_full = path_df[path_df$pid == pid,]
+
   if (before) {
-    path_df = path_df[path_df$runid < runid,]
+    path_df_sub = path_df_full[path_df_full$runid < runid,]
   } else {
-    path_df = path_df[path_df$runid <= runid,]
+    path_df_sub = path_df_full[path_df_full$runid <= runid,]
   }
 
-  runids = path_df$runid
+  exec_runids = path_df_sub$runid
   run_df = drf$run_df
   if (!has_col(run_df, "rcode") | update_rcode) {
-    run_df = drf_run_df_create_rcode(run_df, runids=runids, overwrite=TRUE)
+    # Ensure full context is passed to rcode generation, including the target `pid`
+    run_df = drf_run_df_create_rcode(run_df, runids=path_df_full$runid, overwrite=TRUE)
   }
-  rows = match(runids,run_df$runid)
+  rows = match(exec_runids, run_df$runid)
   rows = rows[run_df$rcode[rows] != ""]
-
-  # TO DO: possible shorten code if we can load some runid cache inbetween
-
 
   rcode = run_df$rcode[rows]
 
@@ -80,10 +80,10 @@ drf_get_data = function(runid=pid, drf, filtered=TRUE,before=TRUE, update_rcode=
   }
 
   # Simple execution of R code
-  # We may change to something more sophisticated later
   rcode_call = parse(text = paste0(rcode, collapse="\n"))
   exec_env$project_dir = drf$project_dir
-  res = eval(rcode_call,envir = exec_env)
-  res
-}
+  eval(rcode_call, envir = exec_env)
 
+  # Crucial: Always return the manipulated data frame explicitly
+  exec_env$data
+}

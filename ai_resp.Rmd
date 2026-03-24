@@ -1,112 +1,14 @@
 
 
 
-An elegant way to fix this issue is to ensure that `stata2r` processes the Stata commands with their full chronological context rather than in isolation. 
+The error message **`Error in startsWith(cols, pattern_rhs[row]) : non-character object(s)`** occurs because `drf_get_data` evaluated the R code but returned the result of the *last evaluated statement*, which was `assign(...)` returning `TRUE` invisibly rather than the data frame. This led to `dat` being `TRUE` (or `NULL`), breaking `colnames(dat)`.
 
-As you noted, `stata2r` can now intelligently mark regression commands (like `reghdfe` or `summarize`) as data modifications (`is_mod = TRUE`) if their results (e.g., `e(sample)` or `r(mean)`) are subsequently required by a later command (like `gen byte u_sample = e(sample)` or inside a regression `if` statement). However, when `drf_run_df_create_rcode` and `drf_get_filter_code` pass individual lines to `stata2r`, the latter loses the context to resolve macros.
+Additionally, there is a hidden bug: because Stata commands can sometimes contain newlines (`\n`), passing them sequentially to `stata2r::do_to_r()` or `stata2r::s2r_check_mod()` without sanitizing them first causes `stata2r` to split those strings. The resulting translation vector gets mismatched with the original row indices in `run_df`, mapping translations to the wrong rows!
 
-Here are the specific updates to `repboxDRF` that solve this:
+Here are the fixes for both the return value evaluation and the newline-indexing issues.
 
-### 1. `repboxDRF/R/drf_paths.R`
-In `find_data_run_path`, use the new `stata2r::s2r_check_mod()` function to inspect the full contiguous path block. It guarantees that `e()`-producing regression commands and `r()`-producing summary commands are preserved in the path if they are relied upon later.
-
-```r
-# FILE: repboxDRF/R/drf_paths.R
-# Replace the existing find_data_run_path function:
-
-# srun_df is a part of run_df with a single node
-find_data_run_path = function(pid_row, srun_df, pid=NULL) {
-  restore.point("find_data_run_path")
-
-  # All runid in same load block until
-  # pid
-  path = which(srun_df$load_block == srun_df$load_block[pid_row] & srun_df$.ROW <= pid_row)
-
-  # If we start with a restore command
-  # then jump to previous preserve and then
-  # add all rows with the same load_block
-  while (TRUE) {
-    if (srun_df$cmd[path[1]] == "restore") {
-      pr_row = srun_df$preserve_row[path[1]]
-      new_path = which(srun_df$load_block == srun_df$load_block[pr_row] & srun_df$.ROW < pr_row)
-      path = c(new_path, path[-1])
-      next
-    }
-    break
-  }
-
-  # Adapt path: Use stata2r to accurately determine which commands have data 
-  # manipulation side effects or are relied upon by later commands.
-  stata_code = srun_df$cmdline[path]
-  cmd_df = stata2r::s2r_check_mod(stata_code)
-
-  cmd_types = drf_stata_cmd_types()
-  allow = c(cmd_types$scalar, cmd_types$xtset)
-
-  keep = seq_along(path) %in% c(1, length(path)) |
-    cmd_df$is_mod |
-    srun_df$cmd[path] %in% allow |
-    srun_df$runid[path] %in% pid
-
-  path = path[keep]
-
-  return( tibble(pid=srun_df$runid[pid_row], runid=srun_df$runid[path]))
-}
-```
-
-### 2. `repboxDRF/R/drf_r_code.R`
-Modify `drf_run_df_create_rcode` to pass the execution sequence starting from the script's beginning to maintain correct execution state inside `stata2r::do_to_r`. We also manually re-inject `has_original_order_idx` tracking to properly integrate `repbox`'s custom `drf_load_data` with `stata2r`.
-
-```r
-# FILE: repboxDRF/R/drf_r_code.R
-# Replace the existing drf_run_df_create_rcode function:
-
-drf_run_df_create_rcode = function(run_df=drf$run_df, runids=drf_runids(drf), overwrite=TRUE, drf=NULL) {
-  restore.point("drf_run_df_create_rcode")
-
-  if (!has_col(run_df, "rcode")) {
-    run_df$rcode = rep("", NROW(run_df))
-  }
-  if (!is.null(runids)) {
-    rows = match(runids, run_df$runid)
-  } else {
-    rows = seq_len(NROW(run_df))
-  }
-  rows = sort(unique(rows[!is.na(rows)]))
-
-  update_rows = rows
-  if (!overwrite) {
-    update_rows = rows[run_df$rcode[rows] == ""]
-  }
-
-  if (length(update_rows)==0) return(run_df)
-
-  # Translate the execution trace up to the max row so `stata2r` maintains full context
-  max_row = max(update_rows)
-  stata_code = run_df$cmdline[1:max_row]
-  r_df = stata2r::do_to_r(stata_code, return_df = TRUE)
-  
-  translated_code = r_df$r_code[update_rows]
-  run_df$rcode[update_rows] = ifelse(is.na(translated_code), "", translated_code)
-
-  # Overwrite 'load' commands with repbox's own data loading logic
-  inds = update_rows[run_df$cmd_type[update_rows] %in% c("load")]
-  if (length(inds)>0) {
-    code = paste0(
-      'data = drf_load_data(project_dir, "', file.path(run_df$found_path[inds]) ,'")\n',
-      'data$stata2r_original_order_idx = seq_len(nrow(data))\n',
-      'assign("has_original_order_idx", TRUE, envir = stata2r_env)'
-    )
-    run_df$rcode[inds] = code
-  }
-  run_df$rcode = na.val(run_df$rcode, "")
-
-  run_df
-}
-```
-
-### 3. `repboxDRF/R/drf_run_r.R`
-In `drf_get_data`, make sure we create the `rcode` for the *entire path block up to the pid* rather than stopping strictly short of it. This ensures that if the regression command uses an `e()`/`r()` evaluation in its arguments or `if` expression, `stata2r` sees it.
+### 1. Fix `drf_run_r.R`
+We must explicitly return `exec_env$data` at the end of `drf_get_data` so that it always outputs the populated data frame, no matter what the last evaluated expression was.
 
 ```r
 # FILE: repboxDRF/R/drf_run_r.R
@@ -157,13 +59,70 @@ drf_get_data = function(runid=pid, drf, filtered=TRUE, before=TRUE, update_rcode
   # Simple execution of R code
   rcode_call = parse(text = paste0(rcode, collapse="\n"))
   exec_env$project_dir = drf$project_dir
-  res = eval(rcode_call,envir = exec_env)
-  res
+  eval(rcode_call, envir = exec_env)
+  
+  # Crucial: Always return the manipulated data frame explicitly
+  exec_env$data
 }
 ```
 
-### 4. `repboxDRF/R/drf_filter_code.R`
-When we construct the isolated filter code (`if/in` commands), it is dangerous to construct fake commands string like `keep if...` since `stata2r` might fail to resolve macros correctly without history. Instead, we can translate the raw `if_str` utilizing `stata2r::translate_stata_expression_with_r_values` bound to the chronological context of the pipeline block.
+### 2. Fix `drf_r_code.R`
+We must sanitize newlines within individual Stata commands to ensure `stata2r`'s returned DataFrame keeps a strict 1-to-1 matching to the passed indices. Also, we will use explicit `stata2r::stata2r_env` to avoid environment missing errors.
+
+```r
+# FILE: repboxDRF/R/drf_r_code.R
+# Replace the existing drf_run_df_create_rcode function:
+
+drf_run_df_create_rcode = function(run_df=drf$run_df, runids=drf_runids(drf), overwrite=TRUE, drf=NULL) {
+  restore.point("drf_run_df_create_rcode")
+
+  if (!has_col(run_df, "rcode")) {
+    run_df$rcode = rep("", NROW(run_df))
+  }
+  if (!is.null(runids)) {
+    rows = match(runids, run_df$runid)
+  } else {
+    rows = seq_len(NROW(run_df))
+  }
+  rows = sort(unique(rows[!is.na(rows)]))
+
+  update_rows = rows
+  if (!overwrite) {
+    update_rows = rows[run_df$rcode[rows] == ""]
+  }
+
+  if (length(update_rows)==0) return(run_df)
+
+  # Translate the execution trace up to the max row so `stata2r` maintains full context
+  max_row = max(update_rows)
+  stata_code = run_df$cmdline[1:max_row]
+  
+  # IMPORTANT: Replace internal newlines with spaces to keep 1-to-1 mapping with rows
+  stata_code = gsub("\n", " ", stata_code, fixed = TRUE)
+  
+  r_df = stata2r::do_to_r(stata_code, return_df = TRUE)
+  
+  translated_code = r_df$r_code[update_rows]
+  run_df$rcode[update_rows] = ifelse(is.na(translated_code), "", translated_code)
+
+  # Overwrite 'load' commands with repbox's own data loading logic
+  inds = update_rows[run_df$cmd_type[update_rows] %in% c("load")]
+  if (length(inds)>0) {
+    code = paste0(
+      'data = drf_load_data(project_dir, "', file.path(run_df$found_path[inds]) ,'")\n',
+      'data$stata2r_original_order_idx = seq_len(nrow(data))\n',
+      'assign("has_original_order_idx", TRUE, envir = stata2r::stata2r_env)'
+    )
+    run_df$rcode[inds] = code
+  }
+  run_df$rcode = na.val(run_df$rcode, "")
+
+  run_df
+}
+```
+
+### 3. Fix `drf_filter_code.R`
+Similarly, protect the path `stata_code` passed into `do_parse()` when evaluating chronological filters.
 
 ```r
 # FILE: repboxDRF/R/drf_filter_code.R
@@ -193,6 +152,9 @@ drf_get_filter_code = function(runid, drf, parcels=drf$parcels) {
     
     path_df_full = path_df[path_df$pid == pid & path_df$runid <= runid,]
     stata_code = drf$run_df$cmdline[match(path_df_full$runid, drf$run_df$runid)]
+    
+    # Protect newlines to avoid row index shifting
+    stata_code = gsub("\n", " ", stata_code, fixed = TRUE)
     
     cmd_df = stata2r::do_parse(stata_code)
     cmd_df = stata2r::mark_data_manip_cmd(cmd_df)
@@ -226,5 +188,50 @@ drf_get_filter_code = function(runid, drf, parcels=drf$parcels) {
   }
 
   return(filter_code)
+}
+```
+
+### 4. Fix `drf_paths.R`
+Consistent safety replacement of `\n` in the pre-check parsing.
+
+```r
+# FILE: repboxDRF/R/drf_paths.R
+# Replace the existing find_data_run_path function:
+
+find_data_run_path = function(pid_row, srun_df, pid=NULL) {
+  restore.point("find_data_run_path")
+
+  # All runid in same load block until pid
+  path = which(srun_df$load_block == srun_df$load_block[pid_row] & srun_df$.ROW <= pid_row)
+
+  # If we start with a restore command then jump to previous preserve 
+  # and then add all rows with the same load_block
+  while (TRUE) {
+    if (srun_df$cmd[path[1]] == "restore") {
+      pr_row = srun_df$preserve_row[path[1]]
+      new_path = which(srun_df$load_block == srun_df$load_block[pr_row] & srun_df$.ROW < pr_row)
+      path = c(new_path, path[-1])
+      next
+    }
+    break
+  }
+
+  # Adapt path: Use stata2r to accurately determine which commands have data 
+  # manipulation side effects or are relied upon by later commands.
+  stata_code = srun_df$cmdline[path]
+  stata_code = gsub("\n", " ", stata_code, fixed = TRUE)
+  cmd_df = stata2r::s2r_check_mod(stata_code)
+
+  cmd_types = drf_stata_cmd_types()
+  allow = c(cmd_types$scalar, cmd_types$xtset)
+
+  keep = seq_along(path) %in% c(1, length(path)) |
+    cmd_df$is_mod |
+    srun_df$cmd[path] %in% allow |
+    srun_df$runid[path] %in% pid
+
+  path = path[keep]
+
+  return( tibble(pid=srun_df$runid[pid_row], runid=srun_df$runid[path]))
 }
 ```
