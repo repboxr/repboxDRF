@@ -94,7 +94,7 @@ drf_copy_org_data = function(project_dir=drf$project_dir, run_df=drf$run_df, run
 
   org_files = file.path(project_dir, "org", data_files)
   has = which(file.exists(org_files))
-  file.copy(from=mod_files[has],to=dest_files[has], overwrite=overwrite)
+  file.copy(from=org_files[has],to=dest_files[has], overwrite=overwrite)
 
   has = file.exists(dest_files)
   if (!all(has)) {
