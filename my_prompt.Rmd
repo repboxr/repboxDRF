@@ -5136,33 +5136,46 @@ expand_varlist = function(varlist_str, data_cols) {
 # Your Task
 ##################################
 
-I am currently revising the repbox pipeline.
-
-The rb* functions and files in repboxRun are the new pipeline.
-
-In the new pipeline I want to run the original Stata code with
-the injections that store the data in intermediate files in
-the /repbox/stata folder on GithubActions.
-
-Yet, all other steps (docs, creating drf folder, repdb packages etc),
-shall be done later locally. There debugging is easier.
-
-The main reproduction run shall still be on GithubActions as it is nicely
-containered and I thus reduce the risk for my own computer.
-
-The github repo shown above still uses the old pipeline, it
-did run much more steps on Github Actions.
-
-Please look at the code and propose how to best implement
-my minimal Github action run with the new pipeline.
-
-I also need local copy functions that put stuff for Github actions to load
-on my server (e.g. only the original supplement ZIP).
-
-Make first a proposal, explain the steps, the needed concrete implementations.
-Don't code anything yet.
+I am currently profiling the code. Look at:
 
 
+find_data_run_path = function(pid_row, srun_df, pid=NULL) {
+  restore.point("find_data_run_path")
 
+  # All runid in same load block until pid
+  path = which(srun_df$load_block == srun_df$load_block[pid_row] & srun_df$.ROW <= pid_row)
 
+  # If we start with a restore command then jump to previous preserve
+  # and then add all rows with the same load_block
+  while (TRUE) {
+    if (srun_df$cmd[path[1]] == "restore") {
+      pr_row = srun_df$preserve_row[path[1]]
+      new_path = which(srun_df$load_block == srun_df$load_block[pr_row] & srun_df$.ROW < pr_row)
+      path = c(new_path, path[-1])
+      next
+    }
+    break
+  }
 
+  # Adapt path: Use stata2r to accurately determine which commands have data
+  # manipulation side effects or are relied upon by later commands.
+  stata_code = srun_df$cmdline[path]
+  stata_code = gsub("\n", " ", stata_code, fixed = TRUE)
+  cmd_df = stata2r::s2r_check_mod(stata_code)
+
+  cmd_types = drf_stata_cmd_types()
+  allow = c(cmd_types$scalar, cmd_types$xtset)
+
+  keep = seq_along(path) %in% c(1, length(path)) |
+    cmd_df$is_mod |
+    srun_df$cmd[path] %in% allow |
+    srun_df$runid[path] %in% pid
+
+  path = path[keep]
+
+  return( tibble(pid=srun_df$runid[pid_row], runid=srun_df$runid[path]))
+}
+
+Do I really need the stata2r::s2r_check_mod(stata_code) calls for every path I generate? I guess later (or earlier) I also make such calls only once for all potential commands that actually modify once on run_df... Could this be sped up? 
+
+But it is also not straightforward, e.g.  initially make a fast guess of potential modifying commands later check once which from the set of potential mod commands on all paths actually modify? Does this make sense. Think about implementation.  

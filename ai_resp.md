@@ -1,3 +1,10 @@
+!MODIFICATION drf_paths.R
+scope = "file"
+file = "R/drf_paths.R"
+is_new_file = false
+description = "Optimize Stata code parsing by checking data modification commands globally per root block instead of per-path."
+---
+```r
 # part of DAP function
 #
 # Here we make the first part: extraction of data paths
@@ -194,3 +201,5 @@ add_load_blocks_to_run_df = function(run_df) {
 #
 #
 # }
+```
+!END_MODIFICATION drf_paths.R
