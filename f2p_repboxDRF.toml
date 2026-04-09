@@ -1,0 +1,166 @@
+opt_prompt_file = "my_prompt.Rmd"
+
+include_files = '''
+pipeline.md
+'''
+exclude_files = '''
+*.toml
+'''
+
+template = '''
+
+Below are relevant files from two R packages related to my repbox project
+
+# Package repboxDRF
+
+{{repboxDRF}}
+
+# Package stata2r (excerpt of R files)
+
+{{stata2r}}
+
+
+## Format of proposed changes to code  files
+
+When you suggest changes to code or text files or completely new files, you MUST use the following format for each modification. Each change must be enclosed in a `!MODIFICATION` block.
+
+### Overall Structure
+
+Each modification block has three parts:
+1.  Start and end markers: `!MODIFICATION {{what}}` and `!END_MODIFICATION {{what}}`, where {{what}} is just a short reference to what is modified, file name or function name with with file. It will not be parsed but makes it easier for a human to understand blocks.
+2.  A metadata block in **TOML format**. This block ends with a `---` separator line.
+3.  A code payload block, which is a standard markdown code fence.
+
+```
+!MODIFICATION {{what}}
+# TOML metadata goes here
+# ...
+---
+```language
+# New code payload goes here
+```
+!END_MODIFICATION {{what}}
+```
+
+### Modification Scope
+
+Each modification must have the following scope:
+
+* `file` (re-)writes a complete file
+
+My software can account for other scopes, but
+thy are not relevant for your task on this package.
+Here always create code for complee files.
+
+---
+
+### **Scope 1: `file`**
+
+Use this to create a new file or to completely rewrite an existing one.
+
+**Required Fields:**
+*   `scope = "file"`
+*   `file` (string): The relative path to the file.
+*   `is_new_file` (boolean): `true` if you are creating a new file, `false` if you are rewriting an existing one.
+*   `description` (string): A brief explanation of the change.
+
+#### **Example 1.1: Creating a new file**
+!MODIFICATION new_helpers.R
+scope = "file"
+file = "R/new_helpers.R"
+is_new_file = true
+description = "Create a new file for helper functions."
+---
+```r
+# A new helper function
+say_hello <- function(name) {
+  paste("Hello,", name)
+}
+```
+!END_MODIFICATION new_helpers.R
+
+#### **Example 1.2: Rewriting an existing file**
+!MODIFICATION README.md
+scope = "file"
+file = "README.md"
+is_new_file = false
+description = "Rewrite the README to add installation instructions."
+---
+```md
+# My Awesome Project
+
+## Installation
+
+Run `remotes::install_github("user/repo")` to install.
+```
+!END_MODIFICATION README.md
+
+
+
+##################################
+# Your Task
+##################################
+
+I am currently revising the repbox pipeline.
+
+The rb* functions and files in repboxRun are the new pipeline.
+
+In the new pipeline I want to run the original Stata code with
+the injections that store the data in intermediate files in
+the /repbox/stata folder on GithubActions.
+
+Yet, all other steps (docs, creating drf folder, repdb packages etc),
+shall be done later locally. There debugging is easier.
+
+The main reproduction run shall still be on GithubActions as it is nicely
+containered and I thus reduce the risk for my own computer.
+
+The github repo shown above still uses the old pipeline, it
+did run much more steps on Github Actions.
+
+Please look at the code and propose how to best implement
+my minimal Github action run with the new pipeline.
+
+I also need local copy functions that put stuff for Github actions to load
+on my server (e.g. only the original supplement ZIP).
+
+Make first a proposal, explain the steps, the needed concrete implementations.
+Don't code anything yet.
+
+
+
+
+'''
+
+
+
+file_template = '''
+
+# FILE: {{filepath}}
+```
+{{filetext}}
+```
+# END OF FILE: {{filepath}}
+
+-----------------------------------------------------------
+'''
+
+
+[[repboxDRF]]
+
+include_files = '''
+/home/rstudio/repbox/repboxDRF/DESCRIPTION
+/home/rstudio/repbox/repboxDRF/R/*.R
+'''
+
+
+[[stata2r]]
+
+include_files = '''
+/home/rstudio/aicoder/stata2r/DESCRIPTION
+/home/rstudio/aicoder/stata2r/R/*.R
+'''
+
+exclude_files = '''
+/home/rstudio/aicoder/stata2r/R/t_*.R
+'''

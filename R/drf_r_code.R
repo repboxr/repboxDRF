@@ -36,7 +36,7 @@ drf_make_r_trans_parcel = function(drf) {
 
 
 
-drf_run_df_create_rcode = function(run_df=drf$run_df, runids=drf_runids(drf), overwrite=TRUE, drf=NULL) {
+drf_run_df_create_rcode = function(run_df=drf$run_df, runids=drf_runids(drf), drf=NULL) {
   restore.point("drf_run_df_create_rcode")
 
   if (!has_col(run_df, "rcode")) {
@@ -50,22 +50,23 @@ drf_run_df_create_rcode = function(run_df=drf$run_df, runids=drf_runids(drf), ov
   rows = sort(unique(rows[!is.na(rows)]))
 
   update_rows = rows
-  if (!overwrite) {
-    update_rows = rows[run_df$rcode[rows] == ""]
-  }
+  # if (!overwrite) {
+  #   cat("\ndrf_run_df_create_rcode with ovewrite=FALSE might be problematic with respect to row indices. Better make just a single translation.\n")
+  #   update_rows = rows[run_df$rcode[rows] == ""]
+  # }
 
   if (length(update_rows)==0) return(run_df)
 
   # Translate the execution trace up to the max row so `stata2r` maintains full context
-  max_row = max(update_rows)
-  stata_code = run_df$cmdline[1:max_row]
+  #max_row = max(update_rows)
+  stata_code = run_df$cmdline[update_rows]
 
   # IMPORTANT: Replace internal newlines with spaces to keep 1-to-1 mapping with rows
   stata_code = gsub("\n", " ", stata_code, fixed = TRUE)
 
   r_df = stata2r::do_to_r(stata_code, return_df = TRUE)
 
-  translated_code = r_df$r_code[update_rows]
+  translated_code = r_df$r_code
   run_df$rcode[update_rows] = ifelse(is.na(translated_code), "", translated_code)
 
   # Overwrite 'load' commands with repbox's own data loading logic
