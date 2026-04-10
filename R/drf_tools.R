@@ -99,7 +99,7 @@ replace_stata_cmdline_path = function(cmdline, replacement = '"`r(my_custom_path
   add_clear = add_clear & !has_clear
 
   add_str = case_when(
-    add_clear & nzchar(tab$opts) ~ " clear",
+    add_clear & !is_empty_str(trimws(tab$opts)) ~ " clear",
     add_clear ~ ", clear",
     TRUE ~ ""
   )
