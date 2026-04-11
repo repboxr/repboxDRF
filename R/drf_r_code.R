@@ -94,7 +94,7 @@ drf_rcode_df = function(drf,runids=NULL, path_merge = c("none", "load", "natural
 
   run_df = drf$run_df
   if (update_rcode) {
-    run_df = drf_run_df_create_rcode(run_df, runids=runids, overwrite=TRUE)
+    run_df = drf_run_df_create_rcode(run_df, runids=runids)
   }
 
   run_df = drf$run_df %>%

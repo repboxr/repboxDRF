@@ -61,7 +61,7 @@ drf_get_data = function(runid=pid, drf, filtered=TRUE, before=TRUE, update_rcode
   run_df = drf$run_df
   if (!has_col(run_df, "rcode") | update_rcode) {
     # Ensure full context is passed to rcode generation, including the target `pid`
-    run_df = drf_run_df_create_rcode(run_df, runids=path_df_full$runid, overwrite=TRUE)
+    run_df = drf_run_df_create_rcode(run_df, runids=path_df_full$runid)
   }
   rows = match(exec_runids, run_df$runid)
   rows = rows[run_df$rcode[rows] != ""]

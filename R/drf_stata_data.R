@@ -39,6 +39,7 @@ drf_replace_run_df_code_data_path = function(run_df =drf$run_df, drf_dir = drf$d
 
 
   # Replace original code that load original data set
+  temp = run_df[rows,]
   org_rows = rows[run_df$has_org_data[rows]]
   add_clear = drf_data_load_needs_clear(run_df[org_rows,])
   run_df$code[org_rows] = replace_stata_cmdline_path(run_df$code[org_rows], paste0('"',run_df$org_data_path[rows],'"'),add_clear=add_clear)

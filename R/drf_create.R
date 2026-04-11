@@ -36,7 +36,7 @@ drf_create = function(project_dir, parcels=list(), acmds = drf_acmds(), overwrit
 
   drf$run_df = run_df
 
-  drf$pid = drf_find_pid(drf$run_df, drf$acmds)
+  drf$pids = drf_find_pid(drf$run_df, drf$acmds)
 
   drf$path_df = drf_make_paths(drf)
   drf$index_df = drf_save_path_df(drf=drf)
