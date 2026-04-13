@@ -69,17 +69,23 @@ drf_run_df_create_rcode = function(run_df=drf$run_df, runids=drf_runids(drf), dr
   translated_code = r_df$r_code
   run_df$rcode[update_rows] = ifelse(is.na(translated_code), "", translated_code)
 
-  # Overwrite 'load' commands with repbox's own data loading logic
+
+    # Overwrite 'load' commands with repbox's own data loading logic
   inds = update_rows[run_df$cmd_type[update_rows] %in% c("load")]
   if (length(inds)>0) {
+    drf_rel_path = ifelse(run_df$is_intermediate[inds],
+                          paste0("im_data/", sub("^.*?im_data/", "", run_df$org_data_path[inds])),
+                          paste0("org_data/", run_df$found_path[inds]))
     code = paste0(
-      'data = drf_load_data(project_dir, "', file.path(run_df$found_path[inds]) ,'")\n',
+      'data = drf_load_data(project_dir, "', drf_rel_path ,'")\n',
       'data$stata2r_original_order_idx = seq_len(nrow(data))\n',
       'assign("has_original_order_idx", TRUE, envir = stata2r::stata2r_env)'
     )
     run_df$rcode[inds] = code
   }
   run_df$rcode = na.val(run_df$rcode, "")
+
+
 
   run_df
 }

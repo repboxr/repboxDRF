@@ -49,16 +49,22 @@ drf_make_run_df = function(project_dir = drf$project_dir, parcels=drf$parcels, d
   cmd_types = drf_stata_cmd_types_vec()
   run_df$cmd_type = cmd_types[run_df$cmd]
 
-  rows = run_df$cmd_type == "reg"
-  inds = which(has.substr(run_df$cmdline[rows]," _I"))
-  run_df$is_I_reg = FALSE
-  run_df$is_I_reg[rows[inds]] = TRUE
+  # I think stata2r deals with xi automatically
+  # so probably no need anymore to store such cols in run_df
+  if (FALSE) {
+    rows = run_df$cmd_type == "reg"
+    inds = which(has.substr(run_df$cmdline[rows]," _I"))
+    run_df$is_I_reg = FALSE
+    run_df$is_I_reg[rows[inds]] = TRUE
 
-  rows = run_df$cmd_type %in% c("reg","mod")
-  inds = which(stri_detect_regex(run_df$cmdline[rows],"(^|[ \\:])[ ]*xi[ \\:]"))
-  run_df$is_xi = FALSE
-  run_df$is_xi[inds] = TRUE
+    rows = run_df$cmd_type %in% c("reg","mod")
+    inds = which(stri_detect_regex(run_df$cmdline[rows],"(^|[ \\:])[ ]*xi[ \\:]"))
+    run_df$is_xi = FALSE
+    run_df$is_xi[inds] = TRUE
+  }
 
+  # Resolve explicit intermediate tracking before generating scripts / caches
+  run_df = drf_run_df_add_data_paths(run_df, drf_dir = file.path(project_dir, "drf"), drf = drf)
 
   if (add_rcode) {
     parcels = repboxDB::repdb_load_parcels(project_dir, "r_trans", parcels=parcels)
@@ -87,7 +93,8 @@ drf_add_path_df_cols_for_cache = function(path_df = drf$path_df, run_df=drf$run_
   cols = setdiff(names(path_df), c("cmd_type","found_path", "is_xi", "is_I_reg","is_load_mod"))
   path_df = path_df[,cols]
   path_df %>%
-    left_join(run_df %>% select(runid, cmd_type,  found_path, is_xi, is_I_reg), by="runid") %>%
+    #left_join(run_df %>% select(runid, cmd_type,  found_path, is_xi, is_I_reg), by="runid") %>%
+    left_join(run_df %>% select(runid, cmd_type,  found_path), by="runid") %>%
     mutate(is_load_mod = cmd_type %in% c("load","mod","merge"))
 
 }

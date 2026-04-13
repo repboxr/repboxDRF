@@ -18,9 +18,14 @@ drf_load_data = function(project_dir, rel_path, ..., add_org_row=isTRUE(getOptio
   restore.point("repbox_load_data")
   data = drf_cached_data(file=rel_path, project_dir=project_dir)
   if (!is.null(data)) return(data)
-  file = file.path(project_dir, "drf/org_data", rel_path)
+
+  file = file.path(project_dir, "drf", rel_path)
   if (!file.exists(file)) {
-    stop(paste0("The original data set ", rel_path, " is not yet stored in the DRF folder ", file.path(project_dir, "drf/org_data")))
+    file = file.path(project_dir, "drf/org_data", rel_path)
+  }
+
+  if (!file.exists(file)) {
+    stop(paste0("The original data set ", rel_path, " is not yet stored in the DRF folder ", dirname(file)))
   }
 
   ext = tolower(tools::file_ext(file))
