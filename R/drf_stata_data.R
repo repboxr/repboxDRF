@@ -57,10 +57,10 @@ drf_run_df_add_data_paths = function(run_df = drf$run_df, drf_dir = drf$drf_dir,
      }
   }
 
-  cache_data_path = file.path(drf_dir, "cache_dta", paste0(run_df$runid,".dta"))
-  has_cache_data = file.exists(cache_data_path)
-  run_df$cache_data_path = ifelse(has_cache_data, cache_data_path, NA_character_)
-  run_df$has_cache_data = has_cache_data
+  drf_cache_file = file.path(drf_dir, "cached_dta", paste0(run_df$runid,"_cache.dta"))
+  has_file_cache = file.exists(drf_cache_file)
+  run_df$drf_cache_file = ifelse(has_file_cache, drf_cache_file, NA_character_)
+  run_df$has_file_cache = has_file_cache
   run_df
 
 }

@@ -25,6 +25,7 @@ example = function() {
 
 drf_stata_code_df = function(drf,runids=NULL, path_merge = c("none", "load", "natural", "load_natural")[4]) {
   restore.point("drf_stata_code_skel")
+  project_dir = drf$project_dir
   pids = runids
   path_df = drf$path_df
   if (!is.null(pids)) {
@@ -35,24 +36,22 @@ drf_stata_code_df = function(drf,runids=NULL, path_merge = c("none", "load", "na
   if (length(pids)<=1) path_merge = "none"
 
   restore_code = function(data_path) {
-    # "preserve, restore"
     paste0("* Restore previously loaded data set", basename(data_path), "\nframe copy cache_frame default, replace")
   }
   preserve_code = function() {
-    #"\npreserve"
     "\nframe copy default cache_frame, replace"
   }
 
 
-  # Pick only those run commands that are used
-  # in the selected paths
   run_df = drf$run_df
   run_df = run_df %>% semi_join(path_df, by="runid")
 
-  # Create code for every used command line
+  if (!has_col(run_df, "aux_cmd_type")) {
+    run_df$aux_cmd_type = rep("", NROW(run_df))
+  }
+
   run_df$code = run_df$cmdline
 
-  # Adapt data sets in load and merge commands
   run_df = drf_replace_run_df_code_data_path(run_df = run_df, drf=drf)
   run_df$data_path = run_df$org_data_path
 
@@ -63,8 +62,15 @@ drf_stata_code_df = function(drf,runids=NULL, path_merge = c("none", "load", "na
     code_li = lapply(pids, function(pid) {
       pdf = path_li[[as.character(pid)]]
       rdf = run_df[run_df$runid %in% pdf$runid, ]
+
+      # Handle path truncation due to cache
+      if (isTRUE(rdf$has_file_cache[1])) {
+        rdf$code[1] = paste0('use "', rdf$drf_cache_file[1], '", clear')
+        rdf$aux_cmd_type[1] = "load_cache"
+      }
+
       rdf %>%
-        transmute(pid=pid,runid=runid, code=code, pre="", post="", cmd_type=cmd_type, cmd=cmd, is_target = runid==pid, aux_cmd_type="")
+        transmute(pid=pid,runid=runid, code=code, pre="", post="", cmd_type=cmd_type, cmd=cmd, is_target = runid==pid, aux_cmd_type=na.val(aux_cmd_type,""))
     })
     sc_df = bind_rows(code_li)
     return(sc_df)
@@ -110,6 +116,12 @@ drf_stata_code_df = function(drf,runids=NULL, path_merge = c("none", "load", "na
     code_li = lapply(pids, function(pid) {
       pdf = path_li[[as.character(pid)]]
       rdf = run_df[run_df$runid %in% pdf$runid, ]
+
+      # Cache implementation for unmerged steps
+      if (isTRUE(rdf$has_file_cache[1])) {
+        rdf$code[1] = paste0('use "', rdf$drf_cache_file[1], '", clear')
+      }
+
       rdf = rdf %>%
         transmute(pid=pid,runid=runid, code=code, pre="", post="", cmd_type=cmd_type, cmd=cmd, is_target = runid==pid, aux_cmd_type="", clear=FALSE)
 
@@ -121,14 +133,11 @@ drf_stata_code_df = function(drf,runids=NULL, path_merge = c("none", "load", "na
         rdf$code[1] = restore_code(ps$data_path)
         rdf$aux_cmd_type[1] = paste0("restore")
       }
+      rdf
     })
     sc_df = bind_rows(code_li)
     return(sc_df)
   }
-
-  # merge_natural==TRUE
-  # means that if in the original script regressions are run consequutively
-  # after each other, we will also do this in this generated script
 
   code_li = vector("list", length(pids))
   opdf = NULL
@@ -136,7 +145,6 @@ drf_stata_code_df = function(drf,runids=NULL, path_merge = c("none", "load", "na
 
   while (counter < length(pids)) {
     counter = counter+1
-    #cat("\n", counter, "of", length(pids), pid,"\n")
     pid = pids[counter]
     pdf = path_li[[as.character(pid)]]
     if (is.null(opdf) | NROW(opdf)>=NROW(pdf)) {
@@ -147,6 +155,11 @@ drf_stata_code_df = function(drf,runids=NULL, path_merge = c("none", "load", "na
 
     if (restart) {
       rdf = run_df[run_df$runid %in% pdf$runid, ]
+
+      if (isTRUE(rdf$has_file_cache[1])) {
+        rdf$code[1] = paste0('use "', rdf$drf_cache_file[1], '", clear')
+      }
+
       rdf = rdf %>%
         transmute(pid=pid,runid=runid, code=code, pre="", post="", cmd_type=cmd_type, cmd=cmd, is_target = runid==pid, aux_cmd_type="", clear=FALSE)
 
@@ -154,7 +167,6 @@ drf_stata_code_df = function(drf,runids=NULL, path_merge = c("none", "load", "na
 
       if (ps$preserve_data) {
         rdf$code[1] = paste0(rdf$code[1],preserve_code())
-
         rdf$aux_cmd_type[1] = paste0("load_preserve")
       } else if (ps$restore_data) {
         rdf$code[1] = restore_code(ps$data_path)
@@ -162,33 +174,37 @@ drf_stata_code_df = function(drf,runids=NULL, path_merge = c("none", "load", "na
       }
       opdf = pdf
 
-
     } else if (!restart) {
-      # continue with commands that continue previous path
       npdf = pdf %>% filter(runid > max(opdf$runid))
       opdf = pdf
       pdf = npdf
 
       rdf = run_df[run_df$runid %in% pdf$runid, ]
+
+      # Unlikely inside a continued sequence, but keeps it safe
+      if (isTRUE(rdf$has_file_cache[1])) {
+        rdf$code[1] = paste0('use "',  rdf$drf_cache_file[1], '", clear')
+      }
+
       rdf = rdf %>%
         transmute(pid=pid,runid=runid, code=code, pre="", post="", cmd_type=cmd_type, cmd=cmd, is_target = runid==pid, aux_cmd_type="", clear=FALSE)
     }
     code_li[[counter]] = rdf
   }
   sc_df = bind_rows(code_li)
-  all(pids %in% sc_df$pid)
   sc_df
 }
+
 
 # Add to Stata code command that save data set caches as dta after some command
 drf_add_code_store_cache = function(runids, sc_df=drf$sc_df,drf_dir = drf$drf_dir, drf = NULL) {
   restore.point("drf_add_code_store_cache")
   require_drf_dir(drf_dir)
 
-  cache_dir = file.path(drf_dir, "cache_dta")
+  cache_dir = file.path(drf_dir, "cached_dta")
   if (!dir.exists(cache_dir)) dir.create(cache_dir)
 
-  cache_files = file.path(cache_dir, paste0("cache_", runids, ".dta"))
+  cache_files = file.path(cache_dir, paste0(runids, "_cache.dta"))
 
   # Will only match first time runid appears in sc_df
   # but that is what we want: caching multiple times makes no sense

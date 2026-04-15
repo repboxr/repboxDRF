@@ -39,14 +39,21 @@ drf_create = function(project_dir, parcels=list(), acmds = drf_acmds(), overwrit
   drf$pids = drf_find_pid(drf$run_df, drf$acmds)
 
   drf$path_df = drf_make_paths(drf)
-  drf$index_df = drf_save_path_df(drf=drf)
   drf$runids = drf_runids(drf)
 
   drf_copy_org_data(drf=drf, move_from_mod=move_from_mod)
 
+  # Incorporate Caches cleanly
+  drf = drf_import_stata_caches(drf, move = move_from_mod)
+  drf = drf_apply_caches(drf)
+
+  # Save path_df index AFTER caches have definitively resolved the shortest paths
+  drf$index_df = drf_save_path_df(drf=drf)
+
   drf = drf_make_r_trans_parcel(drf)
   invisible(drf)
 }
+
 
 # gets run_df from parcels including up-to-date cmd_type column
 repbox_get_run_df = function(project_dir, parcels=list()) {

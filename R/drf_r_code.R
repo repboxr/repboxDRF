@@ -50,18 +50,11 @@ drf_run_df_create_rcode = function(run_df=drf$run_df, runids=drf_runids(drf), dr
   rows = sort(unique(rows[!is.na(rows)]))
 
   update_rows = rows
-  # if (!overwrite) {
-  #   cat("\ndrf_run_df_create_rcode with ovewrite=FALSE might be problematic with respect to row indices. Better make just a single translation.\n")
-  #   update_rows = rows[run_df$rcode[rows] == ""]
-  # }
 
   if (length(update_rows)==0) return(run_df)
 
-  # Translate the execution trace up to the max row so `stata2r` maintains full context
-  #max_row = max(update_rows)
   stata_code = run_df$cmdline[update_rows]
 
-  # IMPORTANT: Replace internal newlines with spaces to keep 1-to-1 mapping with rows
   stata_code = gsub("\n", " ", stata_code, fixed = TRUE)
 
   r_df = stata2r::do_to_r(stata_code, return_df = TRUE)
@@ -70,25 +63,41 @@ drf_run_df_create_rcode = function(run_df=drf$run_df, runids=drf_runids(drf), dr
   run_df$rcode[update_rows] = ifelse(is.na(translated_code), "", translated_code)
 
 
-    # Overwrite 'load' commands with repbox's own data loading logic
+  # Overwrite 'load' commands with repbox's own data loading logic
   inds = update_rows[run_df$cmd_type[update_rows] %in% c("load")]
+
+  # Also overwrite the VERY FIRST execution row if we truncated the path at a file cache
+  if (!is.null(runids) && length(runids) > 0) {
+    first_runid = min(runids)
+    first_row = match(first_runid, run_df$runid)
+    if (!is.na(first_row) && isTRUE(run_df$has_file_cache[first_row])) {
+      inds = unique(c(inds, first_row))
+    }
+  }
+
   if (length(inds)>0) {
-    drf_rel_path = ifelse(run_df$is_intermediate[inds],
-                          paste0("im_data/", sub("^.*?im_data/", "", run_df$org_data_path[inds])),
-                          paste0("org_data/", run_df$found_path[inds]))
-    code = paste0(
-      'data = drf_load_data(project_dir, "', drf_rel_path ,'")\n',
-      'data$stata2r_original_order_idx = seq_len(nrow(data))\n',
-      'assign("has_original_order_idx", TRUE, envir = stata2r::stata2r_env)'
-    )
-    run_df$rcode[inds] = code
+    for (idx in inds) {
+      if (isTRUE(run_df$has_file_cache[idx]) && idx == match(min(runids), run_df$runid)) {
+        drf_rel_path = paste0("cached_dta/", basename(run_df$drf_cache_file[idx]))
+      } else {
+        drf_rel_path = ifelse(run_df$is_intermediate[idx],
+                              paste0("im_data/", sub("^.*?im_data/", "", run_df$org_data_path[idx])),
+                              paste0("org_data/", run_df$found_path[idx]))
+      }
+
+      code = paste0(
+        'data = drf_load_data(project_dir, "', drf_rel_path ,'")\n',
+        'data$stata2r_original_order_idx = seq_len(nrow(data))\n',
+        'assign("has_original_order_idx", TRUE, envir = stata2r::stata2r_env)'
+      )
+      run_df$rcode[idx] = code
+    }
   }
   run_df$rcode = na.val(run_df$rcode, "")
 
-
-
   run_df
 }
+
 
 
 drf_rcode_df = function(drf,runids=NULL, path_merge = c("none", "load", "natural", "load_natural")[4], update_rcode = FALSE) {
