@@ -72,6 +72,22 @@ drf_get_data = function(runid=pid, drf, filtered=TRUE, before=TRUE, update_rcode
     stop("No R code found for getting data. That looks like a bug.")
   }
 
+  # --- INJECT CACHE LOAD CODE IF APPLICABLE ---
+  if (length(exec_runids) > 0) {
+    first_runid = exec_runids[1]
+    first_row = match(first_runid, run_df$runid)
+    if (!is.na(first_row) && isTRUE(run_df$has_file_cache[first_row])) {
+      drf_rel_path = paste0("cached_dta/", basename(run_df$drf_cache_file[first_row]))
+      cache_load_code = paste0(
+        'data = drf_load_data(project_dir, "', drf_rel_path ,'")\n',
+        'data$stata2r_original_order_idx = seq_len(nrow(data))\n',
+        'assign("has_original_order_idx", TRUE, envir = stata2r::stata2r_env)'
+      )
+      rcode[1] = cache_load_code
+    }
+  }
+  # --------------------------------------------
+
   if (filtered) {
     filter_code = drf_get_filter_code(pid, drf)
     if (length(filter_code) > 0) {
@@ -87,3 +103,4 @@ drf_get_data = function(runid=pid, drf, filtered=TRUE, before=TRUE, update_rcode
   # Crucial: Always return the manipulated data frame explicitly
   exec_env$data
 }
+
