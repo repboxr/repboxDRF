@@ -50,7 +50,11 @@ drf_create = function(project_dir, parcels=list(), acmds = drf_acmds(), overwrit
   # Save path_df index AFTER caches have definitively resolved the shortest paths
   drf$index_df = drf_save_path_df(drf=drf)
 
+  drf = drf_add_scalar_map(drf)
+  drf = drf_add_dep_df(drf)
+
   drf = drf_make_r_trans_parcel(drf)
+
   invisible(drf)
 }
 

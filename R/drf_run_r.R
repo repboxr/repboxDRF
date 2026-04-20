@@ -14,10 +14,10 @@ example = function() {
   drf_set_file_mcache_cand(file_mcache_cand, project_dir)
   drf_set_runid_mcache_cand(runid_mcache_cand, project_dir)
 
-  class(drf_cache_object())
-  names(drf_cache_object())
+  class(drf_mcache_object())
+  names(drf_mcache_object())
 
-  drf_cache_info()
+  drf_mcache_info()
 
   data = drf_get_data(pid, drf=drf,update_rcode = TRUE)
 
@@ -36,7 +36,6 @@ example = function() {
 #' @param update_rcode Set TRUE if the repbox code for R translation has been updated and the old R code is no longer up-to-date. Mostly relevant during development of the repbox package.
 #' @param exec_env in which environment shall the R code that loads and modifies the data be evaluated, default a new env.
 #' @param pid Alias for runid in this command (pid stands for path ID which is the runid of the final command in a path from path_df)
-
 drf_get_data = function(runid=pid, drf, filtered=TRUE, before=TRUE, update_rcode=FALSE, exec_env = new.env(parent = globalenv()), pid=NULL) {
   restore.point("drf_get_data")
   if (is.null(runid)) {
@@ -46,6 +45,15 @@ drf_get_data = function(runid=pid, drf, filtered=TRUE, before=TRUE, update_rcode
   if (!runid %in% runids) {
     stop("runid is not part of any DRF path. We only build paths that lead to a successfully run regression.")
   }
+
+  can_use_runid_mcache = isTRUE(filtered) & isTRUE(before)
+  if (can_use_runid_mcache) {
+    data = drf_cached_data(runid = runid, project_dir = drf$project_dir)
+    if (!is.null(data)) {
+      return(data)
+    }
+  }
+
   path_df = drf$path_df
   pid = first(path_df$pid[path_df$runid == runid])
 
@@ -66,13 +74,15 @@ drf_get_data = function(runid=pid, drf, filtered=TRUE, before=TRUE, update_rcode
   rows = match(exec_runids, run_df$runid)
   rows = rows[run_df$rcode[rows] != ""]
 
-  rcode = run_df$rcode[rows]
+  run_df = run_df[rows,]
+
+  rcode = run_df$rcode
 
   if (length(rcode)==0) {
     stop("No R code found for getting data. That looks like a bug.")
   }
 
-  # --- INJECT CACHE LOAD CODE IF APPLICABLE ---
+  # INJECT CACHE LOAD CODE IF APPLICABLE ---
   if (length(exec_runids) > 0) {
     first_runid = exec_runids[1]
     first_row = match(first_runid, run_df$runid)
@@ -86,7 +96,6 @@ drf_get_data = function(runid=pid, drf, filtered=TRUE, before=TRUE, update_rcode
       rcode[1] = cache_load_code
     }
   }
-  # --------------------------------------------
 
   if (filtered) {
     filter_code = drf_get_filter_code(pid, drf)
@@ -100,7 +109,16 @@ drf_get_data = function(runid=pid, drf, filtered=TRUE, before=TRUE, update_rcode
   exec_env$project_dir = drf$project_dir
   eval(rcode_call, envir = exec_env)
 
-  # Crucial: Always return the manipulated data frame explicitly
-  exec_env$data
+  data = exec_env$data
+
+  if (can_use_runid_mcache) {
+    drf_store_if_mcache_cand(data, runid = runid, project_dir = drf$project_dir)
+  }
+
+  data
 }
 
+# eval r code stepwise with try catch: return error info
+drf_eval_r_code_stepwise = function(rcode, env) {
+
+}

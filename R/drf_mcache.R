@@ -1,4 +1,8 @@
-drf_cache_info = function() {
+example = function() {
+  drf_mcache_info()
+}
+
+drf_mcache_info = function() {
   cache = getOption("repboxDRF.mcache")
   if (is.null(cache)) {
     cat("\nNo drf_cache stored.\n")
@@ -23,11 +27,11 @@ drf_cache_info = function() {
   invisible()
 }
 
-drf_cache_object = function(project_dir) {
+drf_mcache_object = function(project_dir) {
   getOption("repboxDRF.mcache")
 }
 
-drf_has_cache = function(runid=NULL,file=NULL, project_dir = NULL) {
+drf_has_mcache = function(runid=NULL,file=NULL, project_dir = NULL) {
   drf_has_mcache(runid,file, project_dir)
 }
 
@@ -50,6 +54,32 @@ drf_init_mcache = function(project_dir,file_mcache_cand = NULL, runid_mcache_can
   cache$runid_mcache_cand = runid_mcache_cand
   options(repboxDRF.mcache = cache)
   invisible(cache)
+}
+
+drf_enable_mcache = function(drf, clear = FALSE, use_file_cache = TRUE, use_runid_cache = TRUE) {
+  restore.point("drf_enable_mcache")
+
+
+  if (!has_col(drf$path_df, "found_path")) {
+    drf$path_df = drf_add_path_df_cols_for_cache(drf=drf)
+  }
+
+  #drf_require(has_col(path_df, "found_path"), "path_df has not column 'found_path' make sure drf_add_path_df_cols_for_cache was called.", drf)
+
+  project_dir = drf$project_dir
+  drf_init_mcache(project_dir = project_dir, clear = clear)
+
+  if (use_file_cache) {
+    file_mcache_cand = drf_find_file_mcache_cand(drf = drf)
+    drf_set_file_mcache_cand(file_mcache_cand, project_dir = project_dir)
+  }
+
+  if (use_runid_cache) {
+    runid_mcache_cand = drf_find_runid_mcache_cand(drf = drf)
+    drf_set_runid_mcache_cand(runid_mcache_cand, project_dir = project_dir)
+  }
+
+  invisible(drf)
 }
 
 
@@ -109,14 +139,16 @@ drf_has_mcache = function(runid=NULL, file=NULL, project_dir = NULL) {
 
 
 drf_get_mcache_data = function(runid=NULL,file=NULL, project_dir = NULL) {
-
+  restore.point("drf_get_mcache_data")
   cache = getOption("repboxDRF.mcache")
   if (is.null(cache)) return(NULL)
   if (!is.null(project_dir)) {
     if (!isTRUE(cache$project_dir == project_dir)) return(NULL)
   }
   if (!is.null(runid)) {
-    get(paste0("r", runid), envir=cache$data_for_runid)
+    cname = paste0("r", runid)
+    if (!exists(cname, cache$data_for_runid)) return(NULL)
+    get(cname, envir=cache$data_for_runid)
   } else if (!is.null(file)) {
     cache$data_for_file[[file]]
   } else {

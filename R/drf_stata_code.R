@@ -1,6 +1,7 @@
 example = function() {
   # Should point to this project dir
   project_dir = "~/repbox/projects/aejapp_11_2_10"
+  project_dir = "~/repbox/projects_test/test"
 
   if (FALSE)
     rstudioapi::filesPaneNavigate(project_dir)
@@ -23,7 +24,7 @@ example = function() {
 
 
 
-drf_stata_code_df = function(drf,runids=NULL, path_merge = c("none", "load", "natural", "load_natural")[4]) {
+drf_stata_code_df = function(drf,runids=NULL, path_merge = c("none", "load", "natural", "load_natural")[4], cache_after_runids = drf$cache_after_runids, cache_after_cmd=drf$cache_after_cmd) {
   restore.point("drf_stata_code_skel")
   project_dir = drf$project_dir
   pids = runids
@@ -54,6 +55,7 @@ drf_stata_code_df = function(drf,runids=NULL, path_merge = c("none", "load", "na
 
   run_df = drf_replace_run_df_code_data_path(run_df = run_df, drf=drf)
   run_df$data_path = run_df$org_data_path
+  run_df = drf_code_stata_add_save_cache(project_dir = project_dir, run_df=run_df,cache_after_runids = cache_after_runids, cache_after_cmd = cache_after_cmd)
 
   path_li = split(path_df, path_df$pid)
   code_li = NULL
@@ -192,6 +194,14 @@ drf_stata_code_df = function(drf,runids=NULL, path_merge = c("none", "load", "na
     code_li[[counter]] = rdf
   }
   sc_df = bind_rows(code_li)
+
+  # we now add scalar definitions from scalar map
+  sc_df = sc_df %>%
+    left_join(drf$scalar_code, by="runid") %>%
+    mutate(
+      scalar__stata_code = na.val(scalar_stata_code,""),
+      scalar_r_code = na.val(scalar_r_code,"")
+    )
   sc_df
 }
 
@@ -257,6 +267,33 @@ restore\n",
   sc_df
 }
 
+drf_code_stata_add_save_cache = function(project_dir, run_df, cache_after_runids=NULL, cache_after_cmd=NULL) {
+  restore.point("drf_code_stata_add_save_cache")
+
+
+
+  runids = cache_after_runids
+  if (!is.null(cache_after_cmd)) {
+    runids = union(runids, run_df$runid[run_df$cmd %in% cache_after_cmd])
+  }
+  if (length(runids)==0) return(run_df)
+  cache_dir = file.path(project_dir, "drf","cached_dta")
+  if (!dir.exists(cache_dir)) dir.create(cache_dir)
+  cache_files = paste0(cache_dir, "/", runids,"_cache.dta")
+
+  # don't store if cache already exists
+  has = file.exists(cache_files)
+  runids = runids[!has]
+  cache_files = cache_files[!has]
+  if (length(runids)==0) return(run_df)
+  # since no replace option does not overwrite
+  # error is ignored because of capture
+  save_code = paste0('\ncapture save "', cache_files,'"\n')
+  rows = match(runids, run_df$runid)
+  run_df$code[rows] = paste0(run_df$code[rows], save_code)
+  run_df
+
+}
 
 drf_code_stata_path_header = function(sc_df, header_tpl = "\n***** Path for runid={{pid}} ****\n\n", to_col="pre", append_mode = c("overwrite", "left", "right")[1]) {
   drf_code_adapt(sc_df, function(code_df, ...) {

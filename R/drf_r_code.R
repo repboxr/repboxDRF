@@ -8,7 +8,6 @@ example = function() {
 
   drf = drf_load(project_dir)
   drf$sc_df = drf_stata_code_df(drf, path_merge = "load_natural")
-  drf$rc_df = drf_rcode_df(drf)
 }
 
 
@@ -36,7 +35,7 @@ drf_make_r_trans_parcel = function(drf) {
 
 
 
-drf_run_df_create_rcode = function(run_df=drf$run_df, runids=drf_runids(drf), drf=NULL) {
+drf_run_df_create_rcode = function(run_df=drf$run_df, runids=drf_runids(drf), scalar_code = drf$scalar_code, drf=NULL) {
   restore.point("drf_run_df_create_rcode")
 
   if (!has_col(run_df, "rcode")) {
@@ -94,32 +93,40 @@ drf_run_df_create_rcode = function(run_df=drf$run_df, runids=drf_runids(drf), dr
     }
   }
   run_df$rcode = na.val(run_df$rcode, "")
+  if (NROW(scalar_code)>0) {
+    run_df = run_df %>%
+      left_join(scalar_code %>% select(runid, scalar_r_code), by="runid") %>%
+      mutate(scalar_r_code = na.val(scalar_r_code, "")) %>%
+      mutate(rcode = paste0(scalar_r_code, rcode)) %>%
+      select(-scalar_r_code)
+  }
+
 
   run_df
 }
 
 
-
-drf_rcode_df = function(drf,runids=NULL, path_merge = c("none", "load", "natural", "load_natural")[4], update_rcode = FALSE) {
-  restore.point("drf_rcode_df")
-
-  # perform path merge like as for stata code
-  sc_df = drf_stata_code_df(drf, runids=runids, path_merge=path_merge)
-  runids = unique(rc_df$runid)
-
-  run_df = drf$run_df
-  if (update_rcode) {
-    run_df = drf_run_df_create_rcode(run_df, runids=runids)
-  }
-
-  run_df = drf$run_df %>%
-    filter(runid %in% runids)
-
-  rc_df = rc_df %>%
-    left_join(run_df %>% select(runid, cmdline,rcode), by="runid") %>%
-    mutate(code = rcode, pre = "", post="")
-  rc_df
-}
-
-
-
+#
+# drf_rcode_df = function(drf,runids=NULL, path_merge = c("none", "load", "natural", "load_natural")[4], update_rcode = FALSE) {
+#   restore.point("drf_rcode_df")
+#
+#   # perform path merge like as for stata code
+#   sc_df = drf_stata_code_df(drf, runids=runids, path_merge=path_merge)
+#   runids = unique(rc_df$runid)
+#
+#   run_df = drf$run_df
+#   if (update_rcode) {
+#     run_df = drf_run_df_create_rcode(run_df, runids=runids)
+#   }
+#
+#   run_df = drf$run_df %>%
+#     filter(runid %in% runids)
+#
+#   rc_df = rc_df %>%
+#     left_join(run_df %>% select(runid, cmdline,rcode), by="runid") %>%
+#     mutate(code = rcode, pre = "", post="")
+#   rc_df
+# }
+#
+#
+#

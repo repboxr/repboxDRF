@@ -21,6 +21,10 @@ drf_load = function(project_dir, parcels=list()) {
   drf$path_df = drf_add_path_df_cols_for_cache(drf=drf)
   drf$runids = drf_runids(drf)
   drf$pids= drf_pids(drf)
+  drf$scalar_map = read_rds_or_null(file.path(project_dir, "drf/scalar_map.Rds"))
+  drf = drf_scalar_map_to_scalar_code(drf)
+  drf$dep_df = read_rds_or_null(file.path(project_dir, "drf/dep_df.Rds"))
+
   drf
 }
 

@@ -1,3 +1,29 @@
+example = function() {
+  project_dir = "~/repbox/projects/aejapp_1_3_4"
+  drf = drf_load(project_dir)
+
+  run_df = drf$run_df
+  names(run_df)
+  path_df = drf$path_df
+  cached_runids = drf_get_cached_runids(project_dir)
+}
+
+
+
+# runids that currently have file caches
+drf_get_cached_runids = function(project_dir=drf$project_dir, drf) {
+  cache_dir = file.path(project_dir, "drf/cached_dta")
+  files = list.files(cache_dir,full.names = FALSE)
+  as.integer(str.left.of(files,"_"))
+}
+
+
+
+drf_find_save_cache_locations = function(drf, cache_runids, just_pids=NULL) {
+
+}
+
+
 drf_import_stata_caches = function(drf, move = TRUE) {
   restore.point("drf_import_stata_caches")
   src_dir = file.path(drf$project_dir, "repbox", "stata", "cached_dta")
@@ -35,6 +61,9 @@ drf_import_stata_caches = function(drf, move = TRUE) {
   return(drf)
 }
 
+
+
+
 drf_is_cache_safe = function(skipped_df, remaining_df) {
   # Heuristic 1: A cache replaces the dataset context but NOT macro memory context.
   # So, if skipped commands defined any memory elements (local, global, scalar, matrix),
@@ -50,7 +79,7 @@ drf_is_cache_safe = function(skipped_df, remaining_df) {
   return(TRUE)
 }
 
-drf_apply_caches = function(drf) {
+drf_apply_caches = function(drf, just_pids=NULL) {
   restore.point("drf_apply_caches")
   if (is.null(drf$cache_df) || NROW(drf$cache_df) == 0) return(drf)
 
@@ -62,6 +91,9 @@ drf_apply_caches = function(drf) {
   path_df = drf$path_df
   run_df = drf$run_df
   pids = unique(path_df$pid)
+  if (!is.null(just_pids)) {
+    pids = intersect(pids, just_pids)
+  }
 
   new_path_df_list = vector("list", length(pids))
 
