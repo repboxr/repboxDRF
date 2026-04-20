@@ -17,13 +17,15 @@ drf_load = function(project_dir, parcels=list()) {
   drf = list(project_dir = project_dir, drf_dir = file.path(project_dir, "drf"), parcels = parcels)
   drf$parcels = repboxDB::repdb_load_parcels(project_dir, c("stata_run_cmd", "r_trans"), parcels=parcels)
   drf$run_df = drf_make_run_df(drf=drf,add_rcode = TRUE)
+
+  drf$dep_df = read_rds_or_null(file.path(project_dir, "drf/dep_df.Rds"))
+  drf$scalar_map = read_rds_or_null(file.path(project_dir, "drf/scalar_map.Rds"))
+  drf = drf_scalar_map_to_scalar_code(drf)
+
   drf$path_df = drf_load_path_df(drf=drf)
   drf$path_df = drf_add_path_df_cols_for_cache(drf=drf)
   drf$runids = drf_runids(drf)
   drf$pids= drf_pids(drf)
-  drf$scalar_map = read_rds_or_null(file.path(project_dir, "drf/scalar_map.Rds"))
-  drf = drf_scalar_map_to_scalar_code(drf)
-  drf$dep_df = read_rds_or_null(file.path(project_dir, "drf/dep_df.Rds"))
 
   drf
 }

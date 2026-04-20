@@ -22,6 +22,16 @@ drf_make_paths = function(drf) {
       cmd_type = type_vec[cmd]
     )
 
+  dep_df = drf$dep_df
+
+  run_df = run_df %>%
+  mutate(
+    is_mod =  cmd %in% stata2r::stata_data_manip_cmds |
+      runid %in% dep_df$source_runid |
+      cmd_type %in% c("mod","load")
+  )
+  run_df$is_mod[run_df$cmd=="scalar"] = FALSE
+
   # Split run_df by root_file_path and compute path_df
   # Then merge path_df again for all run_df
   srun_li = split(run_df,run_df$root_file_path)
@@ -45,9 +55,11 @@ find_one_root_data_paths = function(srun_df, pid) {
   # --- OPTIMIZATION: Compute data modification flags globally ONCE ---
   # We check the entire run block to resolve dependencies accurately and quickly
   # rather than doing this inside the loop for every path
-  stata_code = gsub("\n", " ", srun_df$cmdline, fixed = TRUE)
-  cmd_df = stata2r::s2r_check_mod(stata_code)
-  srun_df$is_mod = cmd_df$is_mod
+
+
+  #stata_code = gsub("\n", " ", srun_df$cmdline, fixed = TRUE)
+  #cmd_df = stata2r::s2r_check_mod(stata_code)
+  #srun_df$is_mod = cmd_df$is_mod
   # -------------------------------------------------------------------
 
   spid_rows = match(pid, srun_df$runid)

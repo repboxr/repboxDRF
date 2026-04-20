@@ -97,7 +97,7 @@ drf_run_df_create_rcode = function(run_df=drf$run_df, runids=drf_runids(drf), sc
     run_df = run_df %>%
       left_join(scalar_code %>% select(runid, scalar_r_code), by="runid") %>%
       mutate(scalar_r_code = na.val(scalar_r_code, "")) %>%
-      mutate(rcode = paste0(scalar_r_code, rcode)) %>%
+      mutate(rcode = ifelse(rcode=="", rcode, paste0(scalar_r_code, rcode))) %>%
       select(-scalar_r_code)
   }
 

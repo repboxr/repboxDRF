@@ -36,6 +36,9 @@ drf_create = function(project_dir, parcels=list(), acmds = drf_acmds(), overwrit
 
   drf$run_df = run_df
 
+  drf = drf_add_scalar_map(drf)
+  drf = drf_add_dep_df(drf)
+
   drf$pids = drf_find_pid(drf$run_df, drf$acmds)
 
   drf$path_df = drf_make_paths(drf)
@@ -50,8 +53,6 @@ drf_create = function(project_dir, parcels=list(), acmds = drf_acmds(), overwrit
   # Save path_df index AFTER caches have definitively resolved the shortest paths
   drf$index_df = drf_save_path_df(drf=drf)
 
-  drf = drf_add_scalar_map(drf)
-  drf = drf_add_dep_df(drf)
 
   drf = drf_make_r_trans_parcel(drf)
 
