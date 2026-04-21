@@ -13,6 +13,29 @@ example = function() {
 }
 
 
+drf_stata_code_to_keep_if_in = function(code) {
+  #code = c("reg y x if x>5", "reg y x if y<2", "reg a z in 1/100")
+  restore.point("drf_stata_code_to_keep_if_in")
+
+  if (NROW(code)==0) return(code)
+  in_str = if_str = keep_str = rep("", length(code))
+
+  # Extract `in` condition
+  in_match = stringi::stri_match_last_regex(code, "\\b(?:in)\\s+(.*)$")
+  rows = !is.na(in_match[,1])
+  in_str[rows]  = paste0(" in ",stringi::stri_trim_both(in_match[rows,2]))
+
+  # Extract `if` condition
+  if_match = stringi::stri_match_last_regex(code, "\\b(?:if)\\s+(.*)$")
+  rows = !is.na(if_match[,1])
+  if_str[rows] = paste0(" if ",stringi::stri_trim_both(if_match[rows,2]))
+
+  rows = nzchar(if_str) | nzchar(in_str)
+  keep_str[rows] = paste0("keep", if_str[rows], in_str[rows])
+  keep_str
+}
+
+
 # Writes stata code skeleton for direct replication of one or
 # multiple regression commands
 # The regression commands themselves will be palceholder of form
@@ -22,7 +45,20 @@ example = function() {
 # They are currently always included in path since
 # later regressions may need them if r() or something is used from it.
 
+drf_remove_non_mod_reg_from_path_df = function(path_df, drf) {
+  restore.point("drf_remove_non_mod_reg_from_path")
+  if (!has_col(path_df, "cmd_type")) {
+    run_df = drf$run_df
+    rows = match(path_df$runid, run_df$runid)
+    cmd_types = run_df$cmd_type[rows]
+  } else {
+    cmd_types = path_df$cmd_type
+  }
 
+  keep = (!(cmd_types %in% c("reg","quasi_reg"))) | path_df$runid == path_df$pid | path_df$runid %in% drf$dep_df$source_runid
+  path_df = path_df[keep,]
+  path_df
+}
 
 drf_stata_code_df = function(drf,runids=NULL, path_merge = c("none", "load", "natural", "load_natural")[4], cache_after_runids = drf$cache_after_runids, cache_after_cmd=drf$cache_after_cmd) {
   restore.point("drf_stata_code_skel")
@@ -63,6 +99,8 @@ drf_stata_code_df = function(drf,runids=NULL, path_merge = c("none", "load", "na
   if (path_merge == "none") {
     code_li = lapply(pids, function(pid) {
       pdf = path_li[[as.character(pid)]]
+      pdf = drf_remove_non_mod_reg_from_path_df(pdf, drf)
+
       rdf = run_df[run_df$runid %in% pdf$runid, ]
 
       # Handle path truncation due to cache
@@ -75,6 +113,14 @@ drf_stata_code_df = function(drf,runids=NULL, path_merge = c("none", "load", "na
         transmute(pid=pid,runid=runid, code=code, pre="", post="", cmd_type=cmd_type, cmd=cmd, is_target = runid==pid, aux_cmd_type=na.val(aux_cmd_type,""))
     })
     sc_df = bind_rows(code_li)
+    # we now add scalar definitions from scalar map
+    sc_df = sc_df %>%
+      left_join(drf$scalar_code, by="runid") %>%
+      mutate(
+        scalar_stata_code = na.val(scalar_stata_code,""),
+        scalar_r_code = na.val(scalar_r_code,"")
+      )
+
     return(sc_df)
   }
   ps_df = path_df %>%
@@ -107,6 +153,7 @@ drf_stata_code_df = function(drf,runids=NULL, path_merge = c("none", "load", "na
         restore_data = is.true(lag(data_runid)==data_runid),
         preserve_data = !restore_data & data_num_paths > 1
       )
+
   } else {
     ps_df = ps_df %>%
       arrange(first_runid, last_runid) %>%
@@ -117,6 +164,7 @@ drf_stata_code_df = function(drf,runids=NULL, path_merge = c("none", "load", "na
   if (!merge_natural) {
     code_li = lapply(pids, function(pid) {
       pdf = path_li[[as.character(pid)]]
+      pdf = drf_remove_non_mod_reg_from_path_df(pdf, drf)
       rdf = run_df[run_df$runid %in% pdf$runid, ]
 
       # Cache implementation for unmerged steps
@@ -138,6 +186,14 @@ drf_stata_code_df = function(drf,runids=NULL, path_merge = c("none", "load", "na
       rdf
     })
     sc_df = bind_rows(code_li)
+    # we now add scalar definitions from scalar map
+    sc_df = sc_df %>%
+      left_join(drf$scalar_code, by="runid") %>%
+      mutate(
+        scalar_stata_code = na.val(scalar_stata_code,""),
+        scalar_r_code = na.val(scalar_r_code,"")
+      )
+
     return(sc_df)
   }
 
@@ -199,7 +255,7 @@ drf_stata_code_df = function(drf,runids=NULL, path_merge = c("none", "load", "na
   sc_df = sc_df %>%
     left_join(drf$scalar_code, by="runid") %>%
     mutate(
-      scalar__stata_code = na.val(scalar_stata_code,""),
+      scalar_stata_code = na.val(scalar_stata_code,""),
       scalar_r_code = na.val(scalar_r_code,"")
     )
   sc_df

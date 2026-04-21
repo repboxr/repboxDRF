@@ -31,13 +31,12 @@ example = function() {
 
 #' @param runid The runid of the command (usually regression) for which the data set shall be obtained
 #' @param drf The drf object loaded with drf_load(project_dir)
-#' @param filtered Shall the data set already be filtered according to the 'if' and 'in' conditions in the Stata command. Default TRUE
-#' @param before Only for commands that modify data. If TRUE (default) return data set before the command modifies the data
 #' @param update_rcode Set TRUE if the repbox code for R translation has been updated and the old R code is no longer up-to-date. Mostly relevant during development of the repbox package.
 #' @param exec_env in which environment shall the R code that loads and modifies the data be evaluated, default a new env.
 #' @param pid Alias for runid in this command (pid stands for path ID which is the runid of the final command in a path from path_df)
-drf_get_data = function(runid=pid, drf, filtered=TRUE, before=TRUE, update_rcode=FALSE, exec_env = new.env(parent = globalenv()), pid=NULL) {
+drf_get_data = function(runid=pid, drf, update_rcode=FALSE, exec_env = new.env(parent = globalenv()), filtered=TRUE, pid=NULL, use_mcache=TRUE) {
   restore.point("drf_get_data")
+  project_dir = drf$project_dir
   if (is.null(runid)) {
     stop("Specify a runid (or pid as synonym).")
   }
@@ -46,23 +45,39 @@ drf_get_data = function(runid=pid, drf, filtered=TRUE, before=TRUE, update_rcode
     stop("runid is not part of any DRF path. We only build paths that lead to a successfully run regression.")
   }
 
-  can_use_runid_mcache = isTRUE(filtered) & isTRUE(before)
-  if (can_use_runid_mcache) {
-    data = drf_cached_data(runid = runid, project_dir = drf$project_dir)
-    if (!is.null(data)) {
+  # check if we have a direct cache for the runid
+  path_df = drf$path_df
+  pid = first(path_df$pid[path_df$runid == runid])
+
+  # is final regression data set: we may get memory cache
+  if (runid==pid & filtered) {
+
+    if (use_mcache) {
+      data = drf_get_mcache_data(runid = runid, project_dir = drf$project_dir)
+      if (!is.null(data)) {
+        return(data)
+      }
+    }
+    if (drf_has_cache_file(project_dir, runid)) {
+      data = drf_load_cache_file(project_dir, runid)
+      if (use_mcache) {
+        drf_store_if_mcache_cand(data, runid = runid, project_dir = drf$project_dir)
+      }
       return(data)
     }
   }
 
-  path_df = drf$path_df
-  pid = first(path_df$pid[path_df$runid == runid])
 
   path_df_full = path_df[path_df$pid == pid,]
+  path_df_sub = path_df_full[path_df_full$runid < runid,]
 
-  if (before) {
-    path_df_sub = path_df_full[path_df_full$runid < runid,]
-  } else {
-    path_df_sub = path_df_full[path_df_full$runid <= runid,]
+  mcache_runid = NULL
+  if (use_mcache) {
+    mcache_runid = drf_get_best_runid_mcache(drf, path_df_sub)
+  }
+  if (!is.null(mcache_runid)) {
+    path_df_sub = path_df_sub[path_df_sub$runid > mcache_runid,]
+    exec_env$data = drf_get_mcache_data(runid=mcache_runid, project_dir = drf$project_dir)
   }
 
   exec_runids = path_df_sub$runid
@@ -72,7 +87,8 @@ drf_get_data = function(runid=pid, drf, filtered=TRUE, before=TRUE, update_rcode
     run_df = drf_run_df_create_rcode(run_df, runids=path_df_full$runid)
   }
   rows = match(exec_runids, run_df$runid)
-  rows = rows[run_df$rcode[rows] != ""]
+  # don't remove those rows might be used for cache
+  #rows = rows[run_df$rcode[rows] != ""]
 
   run_df = run_df[rows,]
 
@@ -83,11 +99,10 @@ drf_get_data = function(runid=pid, drf, filtered=TRUE, before=TRUE, update_rcode
   }
 
   # INJECT CACHE LOAD CODE IF APPLICABLE ---
-  if (length(exec_runids) > 0) {
-    first_runid = exec_runids[1]
-    first_row = match(first_runid, run_df$runid)
-    if (!is.na(first_row) && isTRUE(run_df$has_file_cache[first_row])) {
-      drf_rel_path = paste0("cached_dta/", basename(run_df$drf_cache_file[first_row]))
+  if (NROW(run_df) > 0 & is.null(mcache_runid)) {
+    first_runid = run_df$runid[1]
+    if (isTRUE(run_df$has_file_cache[1])) {
+      drf_rel_path = paste0("cached_dta/", basename(run_df$drf_cache_file[1]))
       cache_load_code = paste0(
         'data = drf_load_data(project_dir, "', drf_rel_path ,'")\n',
         'data$stata2r_original_order_idx = seq_len(nrow(data))\n',
@@ -105,10 +120,13 @@ drf_get_data = function(runid=pid, drf, filtered=TRUE, before=TRUE, update_rcode
   }
 
   # Simple execution of R code
+  if (FALSE) {
+    data = drf_eval_r_code_stepwise(project_dir, rcode, exec_env)
+  }
+
   rcode_call = parse(text = paste0(rcode, collapse="\n"))
   exec_env$project_dir = drf$project_dir
   eval(rcode_call, envir = exec_env)
-
   data = exec_env$data
 
   if (can_use_runid_mcache) {
@@ -119,6 +137,19 @@ drf_get_data = function(runid=pid, drf, filtered=TRUE, before=TRUE, update_rcode
 }
 
 # eval r code stepwise with try catch: return error info
-drf_eval_r_code_stepwise = function(rcode, env) {
+drf_eval_r_code_stepwise = function(project_dir, rcode, env) {
+  restore.point("drf_eval_r_code_stepwise")
+  env$project_dir = drf$project_dir
+  for (i in seq_along(rcode)) {
+    code = rcode[i]
+    if (trimws(code)=="") next
+    rcode_call = parse(text = paste0(rcode, collapse="\n"))
+    eval(rcode_call, envir = env)
+  }
+  if (FALSE) {
+    li = as.list(env)
+  }
+  env$data
 
+  s2r_eval_if_in
 }

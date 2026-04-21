@@ -16,7 +16,7 @@ drf_set_add_org_row = function(add_org_row=TRUE) {
 
 drf_load_data = function(project_dir, rel_path, ..., add_org_row=isTRUE(getOption("repbox_data_add_org_row"))) {
   restore.point("repbox_load_data")
-  data = drf_cached_data(file=rel_path, project_dir=project_dir)
+  data = drf_get_mcache_data(file=rel_path, project_dir=project_dir)
   if (!is.null(data)) return(data)
 
   file = file.path(project_dir, "drf", rel_path)

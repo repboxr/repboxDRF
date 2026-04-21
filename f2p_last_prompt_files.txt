@@ -1,8 +1,10 @@
 DESCRIPTION
 R/cmd_types.R
-R/drf_cache.R
+R/drf_cache_files.R
 R/drf_create.R
+R/drf_deps.R
 R/drf_filter_code.R
+R/drf_mcache.R
 R/drf_paths.R
 R/drf.R
 R/drf_r_code.R

@@ -35,9 +35,6 @@ drf_has_mcache = function(runid=NULL,file=NULL, project_dir = NULL) {
   drf_has_mcache(runid,file, project_dir)
 }
 
-drf_cached_data = function(runid=NULL, file=NULL, project_dir = NULL) {
-  drf_get_mcache_data(runid,file, project_dir)
-}
 
 
 drf_init_mcache = function(project_dir,file_mcache_cand = NULL, runid_mcache_cand=NULL,  clear=FALSE) {
@@ -54,6 +51,10 @@ drf_init_mcache = function(project_dir,file_mcache_cand = NULL, runid_mcache_can
   cache$runid_mcache_cand = runid_mcache_cand
   options(repboxDRF.mcache = cache)
   invisible(cache)
+}
+
+drf_clear_mcache = function() {
+  options(repboxDRF.mcache = NULL)
 }
 
 drf_enable_mcache = function(drf, clear = FALSE, use_file_cache = TRUE, use_runid_cache = TRUE) {
@@ -138,6 +139,26 @@ drf_has_mcache = function(runid=NULL, file=NULL, project_dir = NULL) {
 }
 
 
+drf_get_best_runid_mcache = function(drf, path_df) {
+  restore.point("drf_get_best_runid_cache")
+  runids = drf_available_runid_mcaches(drf, path_df)
+  drf_find_save_cache(path_df, runids, drf=drf)
+}
+
+drf_available_runid_mcaches = function(drf, path_df=NULL) {
+  restore.point("drf_available_runid_mcaches")
+  cache = getOption("repboxDRF.mcache")
+  if (is.null(cache)) return(NULL)
+  if (!isTRUE(cache$project_dir == drf$project_dir)) return(NULL)
+  names = ls(cache$data_for_runid)
+  if (length(names)==0) return(NULL)
+  runids = as.integer(stringi::stri_sub(names,2))
+  if (!is.null(path_df)) {
+    intersect(runids, path_df$runid)
+  }
+  runids
+}
+
 drf_get_mcache_data = function(runid=NULL,file=NULL, project_dir = NULL) {
   restore.point("drf_get_mcache_data")
   cache = getOption("repboxDRF.mcache")
@@ -194,6 +215,8 @@ drf_find_file_mcache_cand = function(path_df=drf$path_df, run_df = drf$run_df, d
 drf_find_runid_mcache_cand = function(path_df=drf$path_df,ignore_load=TRUE, drf=NULL) {
   restore.point("drf_find_max_cache_runids")
 
+
+
   df = path_df %>%
     # only use runid that
     filter(is_load_mod)
@@ -204,15 +227,16 @@ drf_find_runid_mcache_cand = function(path_df=drf$path_df,ignore_load=TRUE, drf=
   df %>%
     group_by(runid) %>%
     summarize(
+      is_pid = any(pid==runid),
       num_pid = n(),
       pid_str = paste0(sort(pid), collapse=",")
     ) %>%
     # there at least two pathes with the same runid
-    filter(num_pid >= 2) %>%
+    filter(num_pid >= 2 | is_pid) %>%
     # get for every unique path combination
     # the largest runid
     group_by(pid_str) %>%
-    filter(runid == max(runid))
+    filter(runid == suppressWarnings(max(runid)))
 }
 
 

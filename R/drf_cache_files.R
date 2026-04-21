@@ -9,6 +9,18 @@ example = function() {
 }
 
 
+drf_has_cache_file = function(project_dir, runid) {
+  cache_dir = file.path(project_dir, "drf/cached_dta")
+  files = paste0(cache_dir, "/", runid, "_cache.dta")
+  file.exists(files)
+}
+
+drf_load_cache_file = function(project_dir, runid) {
+  cache_dir = file.path(project_dir, "drf/cached_dta")
+  file = paste0(cache_dir, "/", runid, "_cache.dta")
+  haven::read_dta(file)
+}
+
 
 # runids that currently have file caches
 drf_get_cached_runids = function(project_dir=drf$project_dir, drf) {
@@ -17,11 +29,6 @@ drf_get_cached_runids = function(project_dir=drf$project_dir, drf) {
   as.integer(str.left.of(files,"_"))
 }
 
-
-
-drf_find_save_cache_locations = function(drf, cache_runids, just_pids=NULL) {
-
-}
 
 
 drf_import_stata_caches = function(drf, move = TRUE) {
@@ -57,34 +64,56 @@ drf_import_stata_caches = function(drf, move = TRUE) {
     }
   }
 
-  drf$cache_df = cache_df %>% filter(!is.na(runid))
+  #drf$cache_df = cache_df %>% filter(!is.na(runid))
   return(drf)
 }
 
+drf_available_file_caches = function(drf, path_df=NULL) {
+  restore.point("drf_available_file_caches")
+  cache_dir = file.path(drf$project_dir, "drf", "cached_dta")
+  cache_files = list.files(cache_dir, glob2rx("*.dta"),full.names = FALSE)
 
+  available_caches = as.integer(str.left.of(basename(cache_files),"_cache.dta"))
 
-
-drf_is_cache_safe = function(skipped_df, remaining_df) {
-  # Heuristic 1: A cache replaces the dataset context but NOT macro memory context.
-  # So, if skipped commands defined any memory elements (local, global, scalar, matrix),
-  # it's unsafe to skip them, as remaining code might silently fail or behave incorrectly.
-  unsafe_defs = grepl("^\\s*(local|global|scalar|matrix)\\b", skipped_df$cmdline)
-  if (any(unsafe_defs)) return(FALSE)
-
-  # Heuristic 2: If remaining commands query r(), e(), or matrices,
-  # they might depend on estimation commands that were skipped.
-  unsafe_uses = grepl("\\b[re]\\(|\\bmatrix\\b", remaining_df$cmdline)
-  if (any(unsafe_uses)) return(FALSE)
-
-  return(TRUE)
+  if (!is.null(path_df)) {
+    available_caches = intersect(available_caches, path_df$runid)
+  }
+  available_caches
 }
+
+drf_find_save_cache = function(path_df, c_runids, dep_df=drf$dep_df, drf) {
+  restore.point("drf_find_save_cache")
+
+  # xi dependencies don't invalidate a cache
+  # only r() and e() dependencies matter
+  dep_df = dep_df %>% filter(dep_type != "xi")
+
+  is_save = function(c_runid) {
+     skipped_runids = path_df$runid[path_df$runid <= c_runid]
+    remaining_runids = path_df$runid[path_df$runid > c_runid]
+
+    has_dep = any(dep_df$runid %in% remaining_runids & dep_df$source_runid %in% skipped_runids)
+    !has_dep
+  }
+
+
+  for (c_runid in rev(sort(c_runids))) {
+    if (is_save(c_runid)) {
+      return(c_runid)
+    }
+  }
+  return(NULL)
+
+}
+
 
 drf_apply_caches = function(drf, just_pids=NULL) {
   restore.point("drf_apply_caches")
-  if (is.null(drf$cache_df) || NROW(drf$cache_df) == 0) return(drf)
 
-  dest_dir = file.path(drf$project_dir, "drf", "cached_dta")
-  available_caches = drf$cache_df$runid[file.exists(drf$cache_df$drf_cache_file)]
+  cache_dir = file.path(drf$project_dir, "drf", "cached_dta")
+  cache_files = list.files(cache_dir, glob2rx("*.dta"),full.names = FALSE)
+
+  available_caches = as.integer(str.left.of(basename(cache_files),"_cache.dta"))
 
   if (length(available_caches) == 0) return(drf)
 
@@ -101,37 +130,27 @@ drf_apply_caches = function(drf, just_pids=NULL) {
     current_pid = pids[i]
     pdf = path_df[path_df$pid == current_pid, ]
 
-    # Check if there are applicable caches for this specific path
-    path_caches = intersect(pdf$runid, available_caches)
+    # Check if there are save caches for this specific path
+    # A cache is save if there is no e() or r()
+    # dependency on an earlier command
+    c_runids = intersect(pdf$runid, available_caches)
+    c_runid = drf_find_save_cache(pdf, c_runids, dep_df=drf$dep_df)
+    cache_applied = FALSE
+    if (!is.null(c_runid)) {
+      # Truncate the path to start EXACTLY at the cached runid
+      pdf = pdf[pdf$runid >= c_runid, ]
 
-    if (length(path_caches) > 0) {
-      path_caches = sort(path_caches, decreasing = TRUE)
-      cache_applied = FALSE
+      # Mark run_df globally so code generators know this runid can act as a load point
+      cache_row_idx = match(c_runid, run_df$runid)
+      drf$run_df$has_file_cache[cache_row_idx] = TRUE
 
-      for (c_runid in path_caches) {
-        skipped_df = run_df[run_df$runid %in% pdf$runid[pdf$runid < c_runid], ]
-        remaining_df = run_df[run_df$runid %in% pdf$runid[pdf$runid > c_runid], ]
+      # Match to cache filename
+      cache_filename = paste0(cache_dir,"/", c_runid, "_cache.dta")
+      drf$run_df$drf_cache_file[cache_row_idx] = cache_filename[1]
 
-        if (drf_is_cache_safe(skipped_df, remaining_df)) {
-          # Truncate the path to start EXACTLY at the cached runid
-          pdf = pdf[pdf$runid >= c_runid, ]
-
-          # Mark run_df globally so code generators know this runid can act as a load point
-          cache_row_idx = match(c_runid, run_df$runid)
-          drf$run_df$has_file_cache[cache_row_idx] = TRUE
-
-          # Match to cache filename
-          cache_filename = drf$cache_df$drf_cache_file[drf$cache_df$runid == c_runid]
-          drf$run_df$drf_cache_file[cache_row_idx] = cache_filename[1]
-
-          cache_applied = TRUE
-          break
-        }
-      }
-      new_path_df_list[[i]] = pdf
-    } else {
-      new_path_df_list[[i]] = pdf
+      cache_applied = TRUE
     }
+    new_path_df_list[[i]] = pdf
   }
 
   drf$path_df = bind_rows(new_path_df_list)

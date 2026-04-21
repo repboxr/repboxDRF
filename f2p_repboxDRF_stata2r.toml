@@ -15,6 +15,11 @@ Below are relevant files from two R packages related to my repbox project
 
 {{repboxDRF}}
 
+# Package stata2r (excerpt of R files)
+
+{{stata2r}}
+
+
 ## Format of proposed changes to code  files
 
 When you suggest changes to code or text files or completely new files, you MUST use the following format for each modification. Each change must be enclosed in a `!MODIFICATION` block.
