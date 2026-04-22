@@ -129,7 +129,7 @@ drf_get_data = function(runid=pid, drf, update_rcode=FALSE, exec_env = new.env(p
   eval(rcode_call, envir = exec_env)
   data = exec_env$data
 
-  if (can_use_runid_mcache) {
+  if (use_mcache & filtered) {
     drf_store_if_mcache_cand(data, runid = runid, project_dir = drf$project_dir)
   }
 

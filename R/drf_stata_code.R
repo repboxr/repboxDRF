@@ -78,6 +78,17 @@ drf_stata_code_df = function(drf,runids=NULL, path_merge = c("none", "load", "na
   preserve_code = function() {
     "\nframe copy default cache_frame, replace"
   }
+  update_rdf_cache_code = function(rdf) {
+    rdf$pre = rep("", NROW(rdf))
+    if (isTRUE(rdf$has_file_cache[1]) & NROW(rdf) > 1) {
+         rdf$code[1] = paste0('use "', rdf$drf_cache_file[1], '", clear')
+    } else if (isTRUE(rdf$has_file_cache[1])) {
+      # load file cache and keep code that runs regression
+      rdf$pre[1] = paste0('use "', rdf$drf_cache_file[1], '", clear\n\n')
+      #rdf$code[1] = paste0('use "', rdf$drf_cache_file[1], '", clear\ncapture noisily ', rdf$code[1])
+    }
+    rdf
+  }
 
 
   run_df = drf$run_df
@@ -90,7 +101,11 @@ drf_stata_code_df = function(drf,runids=NULL, path_merge = c("none", "load", "na
   run_df$code = run_df$cmdline
 
   run_df = drf_replace_run_df_code_data_path(run_df = run_df, drf=drf)
-  run_df$data_path = run_df$org_data_path
+
+  # Only relevant for 1st element in paths
+  run_df$data_path = ifelse(is.na(run_df$drf_cache_file) | run_df$drf_cache_file=="", run_df$org_data_path, run_df$drf_cache_file)
+
+
   run_df = drf_code_stata_add_save_cache(project_dir = project_dir, run_df=run_df,cache_after_runids = cache_after_runids, cache_after_cmd = cache_after_cmd)
 
   path_li = split(path_df, path_df$pid)
@@ -102,15 +117,9 @@ drf_stata_code_df = function(drf,runids=NULL, path_merge = c("none", "load", "na
       pdf = drf_remove_non_mod_reg_from_path_df(pdf, drf)
 
       rdf = run_df[run_df$runid %in% pdf$runid, ]
-
-      # Handle path truncation due to cache
-      if (isTRUE(rdf$has_file_cache[1])) {
-        rdf$code[1] = paste0('use "', rdf$drf_cache_file[1], '", clear')
-        rdf$aux_cmd_type[1] = "load_cache"
-      }
-
+      rdf = update_rdf_cache_code(rdf)
       rdf %>%
-        transmute(pid=pid,runid=runid, code=code, pre="", post="", cmd_type=cmd_type, cmd=cmd, is_target = runid==pid, aux_cmd_type=na.val(aux_cmd_type,""))
+        transmute(pid=pid,runid=runid, code=code, pre=pre, post="", cmd_type=cmd_type, cmd=cmd, is_target = runid==pid, aux_cmd_type=na.val(aux_cmd_type,""))
     })
     sc_df = bind_rows(code_li)
     # we now add scalar definitions from scalar map
@@ -166,14 +175,11 @@ drf_stata_code_df = function(drf,runids=NULL, path_merge = c("none", "load", "na
       pdf = path_li[[as.character(pid)]]
       pdf = drf_remove_non_mod_reg_from_path_df(pdf, drf)
       rdf = run_df[run_df$runid %in% pdf$runid, ]
-
-      # Cache implementation for unmerged steps
-      if (isTRUE(rdf$has_file_cache[1])) {
-        rdf$code[1] = paste0('use "', rdf$drf_cache_file[1], '", clear')
-      }
+      rdf = update_rdf_cache_code(rdf)
 
       rdf = rdf %>%
-        transmute(pid=pid,runid=runid, code=code, pre="", post="", cmd_type=cmd_type, cmd=cmd, is_target = runid==pid, aux_cmd_type="", clear=FALSE)
+        transmute(pid=pid,runid=runid, code=code, pre=pre, post="", cmd_type=cmd_type, cmd=cmd, is_target = runid==pid, aux_cmd_type="", clear=FALSE)
+
 
       ps = ps_df[ps_df$pid==pid,]
       if (ps$preserve_data) {
@@ -213,13 +219,10 @@ drf_stata_code_df = function(drf,runids=NULL, path_merge = c("none", "load", "na
 
     if (restart) {
       rdf = run_df[run_df$runid %in% pdf$runid, ]
-
-      if (isTRUE(rdf$has_file_cache[1])) {
-        rdf$code[1] = paste0('use "', rdf$drf_cache_file[1], '", clear')
-      }
+      rdf = update_rdf_cache_code(rdf)
 
       rdf = rdf %>%
-        transmute(pid=pid,runid=runid, code=code, pre="", post="", cmd_type=cmd_type, cmd=cmd, is_target = runid==pid, aux_cmd_type="", clear=FALSE)
+        transmute(pid=pid,runid=runid, code=code, pre=pre, post="", cmd_type=cmd_type, cmd=cmd, is_target = runid==pid, aux_cmd_type="", clear=FALSE)
 
       ps = ps_df[ps_df$pid==pid,]
 
@@ -238,14 +241,10 @@ drf_stata_code_df = function(drf,runids=NULL, path_merge = c("none", "load", "na
       pdf = npdf
 
       rdf = run_df[run_df$runid %in% pdf$runid, ]
-
-      # Unlikely inside a continued sequence, but keeps it safe
-      if (isTRUE(rdf$has_file_cache[1])) {
-        rdf$code[1] = paste0('use "',  rdf$drf_cache_file[1], '", clear')
-      }
+      rdf = update_rdf_cache_code(rdf)
 
       rdf = rdf %>%
-        transmute(pid=pid,runid=runid, code=code, pre="", post="", cmd_type=cmd_type, cmd=cmd, is_target = runid==pid, aux_cmd_type="", clear=FALSE)
+        transmute(pid=pid,runid=runid, code=code, pre=pre, post="", cmd_type=cmd_type, cmd=cmd, is_target = runid==pid, aux_cmd_type="", clear=FALSE)
     }
     code_li[[counter]] = rdf
   }
@@ -351,7 +350,7 @@ drf_code_stata_add_save_cache = function(project_dir, run_df, cache_after_runids
 
 }
 
-drf_code_stata_path_header = function(sc_df, header_tpl = "\n***** Path for runid={{pid}} ****\n\n", to_col="pre", append_mode = c("overwrite", "left", "right")[1]) {
+drf_code_stata_path_header = function(sc_df, header_tpl = "\n***** Path for runid={{pid}} ****\n\n", to_col="pre", append_mode = c("overwrite", "left", "right")[2]) {
   drf_code_adapt(sc_df, function(code_df, ...) {
     stringi::stri_replace_all_fixed(header_tpl,"{{pid}}", code_df$pid)
   },to_col=to_col, append_mode=append_mode, just_path_pos="start")

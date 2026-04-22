@@ -81,15 +81,31 @@ drf_available_file_caches = function(drf, path_df=NULL) {
   available_caches
 }
 
-drf_find_save_cache = function(path_df, c_runids, dep_df=drf$dep_df, drf) {
+drf_find_save_cache = function(path_df, c_runids, drf) {
   restore.point("drf_find_save_cache")
 
   # xi dependencies don't invalidate a cache
   # only r() and e() dependencies matter
+  dep_df = drf$dep_df
   dep_df = dep_df %>% filter(dep_type != "xi")
 
+  # A regression cache that is not the pid
+  # is not save if it has an if or an in filter condition
+  run_df = drf$run_df
+  pid = path_df$pid[1]
+  rows = match(c_runids, run_df$runid)
+  is_save = (!run_df$cmd_type[rows] %in% c("reg","quasi_reg")) | (c_runids == pid)
+
+  if (any(!is_save)) {
+    code = run_df$cmdline[rows[!is_save]]
+    in_match = stringi::stri_detect_regex(code, "\\b(?:in)\\s+(.*)$")
+    if_match = stringi::stri_detect_regex(code, "\\b(?:if)\\s+(.*)$")
+    is_save[!in_match & !if_match] = TRUE
+  }
+  c_runids = c_runids[is_save]
+
   is_save = function(c_runid) {
-     skipped_runids = path_df$runid[path_df$runid <= c_runid]
+    skipped_runids = path_df$runid[path_df$runid <= c_runid]
     remaining_runids = path_df$runid[path_df$runid > c_runid]
 
     has_dep = any(dep_df$runid %in% remaining_runids & dep_df$source_runid %in% skipped_runids)
@@ -134,7 +150,7 @@ drf_apply_caches = function(drf, just_pids=NULL) {
     # A cache is save if there is no e() or r()
     # dependency on an earlier command
     c_runids = intersect(pdf$runid, available_caches)
-    c_runid = drf_find_save_cache(pdf, c_runids, dep_df=drf$dep_df)
+    c_runid = drf_find_save_cache(pdf, c_runids, drf=drf)
     cache_applied = FALSE
     if (!is.null(c_runid)) {
       # Truncate the path to start EXACTLY at the cached runid
@@ -152,7 +168,14 @@ drf_apply_caches = function(drf, just_pids=NULL) {
     }
     new_path_df_list[[i]] = pdf
   }
+  new_path_df = bind_rows(new_path_df_list)
 
-  drf$path_df = bind_rows(new_path_df_list)
+  if (is.null(just_pids)) {
+    drf$path_df = new_path_df
+  } else {
+    old_path_df = anti_join(drf$path_df, new_path_df, by="pid")
+    drf$path_df = bind_rows(new_path_df, old_path_df) %>%
+      arrange(pid, runid)
+  }
   return(drf)
 }

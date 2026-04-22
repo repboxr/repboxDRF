@@ -8,6 +8,7 @@ example = function() {
 }
 
 drf_add_scalar_map = function(drf) {
+  restore.point("drf_add_scalar_map")
   project_dir = drf$project_dir
   drf$parcels = repboxDB::repdb_load_parcels(project_dir, "stata_scalar", drf$parcels)
   scalar_df = drf$parcels$stata_scalar
@@ -42,7 +43,9 @@ drf_add_scalar_map = function(drf) {
       relationship = "many-to-one"
     )
 
-  outfile = file.path(drf$project_dir,"drf/scalar_map.Rds")
+  drf_dir = file.path(drf$project_dir,"drf")
+  if (!dir.exists(drf_dir)) dir.create(drf_dir)
+  outfile = file.path(drf_dir,"scalar_map.Rds")
   saveRDS(drf$scalar_map, outfile)
   drf = drf_scalar_map_to_scalar_code(drf)
 
