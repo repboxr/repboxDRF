@@ -54,6 +54,10 @@ drf_add_scalar_map = function(drf) {
 
 drf_scalar_map_to_scalar_code = function(drf) {
   scalar_map = drf$scalar_map
+  if (is.null(scalar_map)) {
+    drf$scalar_code = tibble(runid=integer(0), scalar_stata_code = character(0), scalar_r_code=character(0))
+    return(drf)
+  }
   drf$scalar_code = scalar_map %>%
     group_by(runid) %>%
     summarize(
@@ -134,7 +138,8 @@ drf_add_dep_df = function(drf) {
 
   drf$dep_df = bind_rows(edep_df, rdep_df, xidep_df)
   outfile = file.path(drf$project_dir,"drf/dep_df.Rds")
-  saveRDS(drf$dep_df, outfile)
+
+  save_rds_create_dir(drf$dep_df, outfile)
 
   drf
 }
