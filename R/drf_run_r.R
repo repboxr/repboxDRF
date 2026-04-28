@@ -114,10 +114,16 @@ drf_get_data = function(runid=pid, drf, update_rcode=FALSE, exec_env = new.env(p
 
   if (filtered) {
     filter_code = drf_get_filter_code(pid, drf)
-    if (length(filter_code) > 0) {
-      rcode = c(rcode, filter_code)
+
+    # Add possible scalar definitions needed for filter
+    scalar_code = NULL
+    if (pid %in% drf$scalar_code$runid) {
+      rows = which(drf$scalar_code$runid == pid)
+      scalar_code = drf$scalar_code$scalar_r_code[rows]
     }
+    rcode = c(rcode, scalar_code, filter_code)
   }
+
 
   # Simple execution of R code
   if (FALSE) {

@@ -1,5 +1,7 @@
 # Functions related to data set
 # already needed when generating Stata code
+# Functions related to data set
+# already needed when generating Stata code
 drf_run_df_add_data_paths = function(run_df = drf$run_df, drf_dir = drf$drf_dir, drf = NULL) {
   restore.point("drf_run_df_add_data_paths")
   project_dir = drf$project_dir
@@ -22,22 +24,25 @@ drf_run_df_add_data_paths = function(run_df = drf$run_df, drf_dir = drf$drf_dir,
     is_im = FALSE
     if (!is.null(im_df) && NROW(im_df) > 0 && run_df$cmd_type[i] %in% c("load", "merge")) {
       # Find latest save of this file before current runid
-      past_saves = im_df[im_df$file_path == fp & im_df$runid < run_df$runid[i], ]
+      past_saves = im_df[im_df$file_path == fp & im_df$runid < run_df$runid[i], , drop = FALSE]
       if (NROW(past_saves) > 0) {
-        latest_save = past_saves[which.max(past_saves$runid), ]
+        latest_save = past_saves[which.max(past_saves$runid), , drop = FALSE]
         is_im = TRUE
 
-        if (isTRUE(latest_save$has_copy)) {
-          source_physical = file.path(project_dir, "repbox", "stata", "intermediate_data", latest_save$copy_path)
-          dest_rel = latest_save$copy_path
+        copy_path = latest_save$copy_path[[1]]
+        if (length(copy_path) == 0 || is.na(copy_path) || !nzchar(copy_path)) {
+          copy_path = fp
+        }
+
+        if (isTRUE(latest_save$has_copy[[1]])) {
+          source_physical = file.path(project_dir, "repbox", "stata", "intermediate_data", copy_path)
         } else {
-          source_physical = file.path(project_dir, "mod", latest_save$file_path)
-          dest_rel = latest_save$copy_path
+          source_physical = file.path(project_dir, "mod", latest_save$file_path[[1]])
         }
 
         run_df$is_intermediate[i] = TRUE
         run_df$im_source_path[i] = source_physical
-        run_df$org_data_path[i] = file.path(drf_dir, "im_data", dest_rel)
+        run_df$org_data_path[i] = file.path(drf_dir, "im_data", copy_path)
       }
     }
 
@@ -48,22 +53,34 @@ drf_run_df_add_data_paths = function(run_df = drf$run_df, drf_dir = drf$drf_dir,
 
   run_df$has_org_data = FALSE
   for (i in seq_len(NROW(run_df))) {
-     if (is.na(run_df$org_data_path[i])) next
-     if (run_df$is_intermediate[i]) {
-        run_df$has_org_data[i] = file.exists(run_df$im_source_path[i])
-     } else {
-        run_df$has_org_data[i] = file.exists(file.path(project_dir, "mod", run_df$found_path[i])) |
-                                 file.exists(file.path(project_dir, "org", run_df$found_path[i]))
-     }
+    dest = run_df$org_data_path[i]
+    if (is.na(dest) || !nzchar(dest)) next
+
+    # The DRF destination is authoritative once it exists. This is crucial
+    # when move_from_mod=TRUE has already moved the source file.
+    if (file.exists(dest)) {
+      run_df$has_org_data[i] = TRUE
+      next
+    }
+
+    if (isTRUE(run_df$is_intermediate[i])) {
+      src = run_df$im_source_path[i]
+      run_df$has_org_data[i] = !is.na(src) && nzchar(src) && file.exists(src)
+    } else {
+      fp = run_df$found_path[i]
+      run_df$has_org_data[i] =
+        (!is.na(fp) && nzchar(fp) && file.exists(file.path(project_dir, "mod", fp))) ||
+        (!is.na(fp) && nzchar(fp) && file.exists(file.path(project_dir, "org", fp)))
+    }
   }
 
-  drf_cache_file = file.path(drf_dir, "cached_dta", paste0(run_df$runid,"_cache.dta"))
+  drf_cache_file = file.path(drf_dir, "cached_dta", paste0(run_df$runid, "_cache.dta"))
   has_file_cache = file.exists(drf_cache_file)
   run_df$drf_cache_file = ifelse(has_file_cache, drf_cache_file, NA_character_)
   run_df$has_file_cache = has_file_cache
   run_df
-
 }
+
 
 
 drf_data_load_needs_clear = function(run_df=NULL, cmd=run_cmd$cmd, cmd_type=run_df$cmd_type) {
