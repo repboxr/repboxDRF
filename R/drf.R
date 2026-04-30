@@ -79,7 +79,7 @@ drf_make_run_df = function(project_dir = drf$project_dir, parcels=drf$parcels, d
       stop("\nNo r_trans parcel exists generate it.")
     }
     if (!is.null(rt_df)) {
-      run_df = remove_cols(run_df, "rcode")
+      run_df = repboxUtils::remove.cols(run_df, "rcode")
       run_df = left_join(run_df, rt_df, by="runid") %>%
         mutate(rcode = na.val(rcode, ""))
     }

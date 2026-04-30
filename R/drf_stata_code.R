@@ -251,12 +251,14 @@ drf_stata_code_df = function(drf,runids=NULL, path_merge = c("none", "load", "na
   sc_df = bind_rows(code_li)
 
   # we now add scalar definitions from scalar map
-  sc_df = sc_df %>%
-    left_join(drf$scalar_code, by="runid") %>%
-    mutate(
-      scalar_stata_code = na.val(scalar_stata_code,""),
-      scalar_r_code = na.val(scalar_r_code,"")
-    )
+  if (!is.null(drf$scalar_code)) {
+    sc_df = sc_df %>%
+      left_join(drf$scalar_code, by="runid") %>%
+      mutate(
+        scalar_stata_code = na.val(scalar_stata_code,""),
+        scalar_r_code = na.val(scalar_r_code,"")
+      )
+  }
   sc_df
 }
 

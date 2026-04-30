@@ -14,6 +14,7 @@ drf_add_scalar_map = function(drf) {
   scalar_df = drf$parcels$stata_scalar
   drf$scalar_map = NULL
   if (NROW(scalar_df)==0) {
+    drf = drf_scalar_map_to_scalar_code(drf)
     return(drf)
   }
   run_df = drf$run_df
