@@ -124,38 +124,53 @@ drf_get_data = function(runid=pid, drf, update_rcode=FALSE, exec_env = new.env(p
     rcode = c(rcode, scalar_code, filter_code)
   }
 
+  data = drf_eval_create_data_r_code(project_dir = drf$project_dir, rcode=rcode,runid=runid, exec_env=exec_env)
 
-  # Simple execution of R code
-  if (FALSE) {
-    data = drf_eval_r_code_stepwise(project_dir, rcode, exec_env)
-  }
-
-  rcode_call = parse(text = paste0(rcode, collapse="\n"))
-  exec_env$project_dir = drf$project_dir
-  eval(rcode_call, envir = exec_env)
-  data = exec_env$data
-
-  if (use_mcache & filtered) {
+  if (use_mcache & filtered & !is.null(data)) {
     drf_store_if_mcache_cand(data, runid = runid, project_dir = drf$project_dir)
   }
 
   data
 }
 
+drf_eval_create_data_r_code = function(project_dir, rcode, runid=NULL, exec_env=NULL) {
+  restore.point("drf_eval_create_data_r_code")
+  env = new.env(parent = globalenv())
+  env$project_dir = project_dir
+  env$data = exec_env[["data"]]
+
+  rcode_call = parse(text = paste0(rcode, collapse="\n"))
+  res = try(eval(rcode_call, envir = env), silent=TRUE)
+  if (is(res,"try-error")) {
+    exec_env = new.env(parent = globalenv())
+    data = drf_eval_create_data_r_code_stepwise(project_dir, rcode, env, runid=runid)
+  } else {
+    data = env$data
+  }
+  data
+}
+
 # eval r code stepwise with try catch: return error info
-drf_eval_r_code_stepwise = function(project_dir, rcode, env) {
+drf_eval_create_data_r_code_stepwise = function(project_dir, rcode, env, runid=NULL) {
   restore.point("drf_eval_r_code_stepwise")
+  env$data=NULL
   env$project_dir = drf$project_dir
+  has_err = FALSE
   for (i in seq_along(rcode)) {
     code = rcode[i]
     if (trimws(code)=="") next
-    rcode_call = parse(text = paste0(rcode, collapse="\n"))
-    eval(rcode_call, envir = env)
+    res = try({
+      rcode_call = parse(text = paste0(code, collapse="\n"))
+      eval(rcode_call, envir = env)
+    },silent = TRUE)
+    if (is(res, "try-error") & !has_err) {
+      has_err = TRUE
+      repbox_problem(msg = paste0("runid=", runid, " has error in drf_get_data (R translation of data preparation):\n\n",code,"\n\n",  as.character(res)),type="r_trans_get_data", fail_action = "msg",project_dir = drf$project_dir,runid = runid)
+    }
   }
   if (FALSE) {
     li = as.list(env)
   }
   env$data
 
-  s2r_eval_if_in
 }
