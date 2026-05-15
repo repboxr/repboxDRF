@@ -11,12 +11,12 @@ example = function() {
 
 
 # To do: variant that is faster for selected paths
-drf_load = function(project_dir, parcels=list()) {
+drf_load = function(project_dir, parcels=list(), apply_caches=TRUE) {
   restore.point("drf_load")
   project_dir = normalizePath(project_dir)
   drf = list(project_dir = project_dir, drf_dir = file.path(project_dir, "drf"), parcels = parcels)
   drf$parcels = repboxDB::repdb_load_parcels(project_dir, c("stata_run_cmd", "r_trans"), parcels=parcels)
-  drf$run_df = drf_make_run_df(drf=drf,add_rcode = TRUE)
+  drf$run_df = drf_make_run_df(drf=drf, add_rcode = TRUE)
 
   drf$dep_df = read_rds_or_null(file.path(project_dir, "drf/dep_df.Rds"))
   drf$scalar_map = read_rds_or_null(file.path(project_dir, "drf/scalar_map.Rds"))
@@ -24,8 +24,12 @@ drf_load = function(project_dir, parcels=list()) {
 
   drf$path_df = drf_load_path_df(drf=drf)
   drf$path_df = drf_add_path_df_cols_for_cache(drf=drf)
-  drf$runids = drf_runids(drf)
-  drf$pids= drf_pids(drf)
+  drf$runids = unique(drf$path_df$runid)
+  drf$pids = unique(drf$path_df$pid)
+
+  if (isTRUE(apply_caches)) {
+    drf = drf_apply_caches(drf)
+  }
 
   drf
 }

@@ -1,13 +1,16 @@
 
 
 drf_make_path_index = function(path_df) {
+  if (is.null(path_df) || NROW(path_df) == 0) {
+    return(tibble(pid = numeric(0), start_row = integer(0)))
+  }
   path_df$.ROW = 1:NROW(path_df)
   index_df = path_df %>%
     group_by(pid) %>%
     summarize(
       start_row = .ROW[1]
     ) %>%
-    bind_rows(tibble(pid=Inf, start_row = NROW(path_df+1)))
+    bind_rows(tibble(pid=Inf, start_row = NROW(path_df)+1L))
 
 
 

@@ -126,56 +126,83 @@ drf_find_save_cache = function(path_df, c_runids, drf) {
 drf_apply_caches = function(drf, just_pids=NULL) {
   restore.point("drf_apply_caches")
 
+  refresh_drf_after_cache_apply = function(drf) {
+    if (!is.null(drf$path_df) && NROW(drf$path_df) > 0) {
+      drf$runids = unique(drf$path_df$runid)
+      drf$pids = unique(drf$path_df$pid)
+    } else {
+      drf$runids = integer(0)
+      drf$pids = integer(0)
+    }
+    drf
+  }
+
   cache_dir = file.path(drf$project_dir, "drf", "cached_dta")
-  cache_files = list.files(cache_dir, glob2rx("*.dta"),full.names = FALSE)
+  if (!dir.exists(cache_dir)) {
+    return(refresh_drf_after_cache_apply(drf))
+  }
 
-  available_caches = as.integer(str.left.of(basename(cache_files),"_cache.dta"))
+  cache_files = list.files(cache_dir, glob2rx("*.dta"), full.names = FALSE)
+  available_caches = as.integer(str.left.of(basename(cache_files), "_cache.dta"))
+  available_caches = available_caches[!is.na(available_caches)]
 
-  if (length(available_caches) == 0) return(drf)
+  if (length(available_caches) == 0) {
+    return(refresh_drf_after_cache_apply(drf))
+  }
 
   path_df = drf$path_df
   run_df = drf$run_df
+
+  if (is.null(path_df) || NROW(path_df) == 0) {
+    return(refresh_drf_after_cache_apply(drf))
+  }
+
   pids = unique(path_df$pid)
   if (!is.null(just_pids)) {
     pids = intersect(pids, just_pids)
+  }
+
+  if (length(pids) == 0) {
+    return(refresh_drf_after_cache_apply(drf))
   }
 
   new_path_df_list = vector("list", length(pids))
 
   for (i in seq_along(pids)) {
     current_pid = pids[i]
-    pdf = path_df[path_df$pid == current_pid, ]
+    pdf = path_df[path_df$pid == current_pid, , drop = FALSE]
 
-    # Check if there are save caches for this specific path
-    # A cache is save if there is no e() or r()
-    # dependency on an earlier command
+    # Check if there are safe caches for this specific path.
+    # A cache is safe if no later command needs e() or r() state from before it.
     c_runids = intersect(pdf$runid, available_caches)
     c_runid = drf_find_save_cache(pdf, c_runids, drf=drf)
-    cache_applied = FALSE
+
     if (!is.null(c_runid)) {
-      # Truncate the path to start EXACTLY at the cached runid
-      pdf = pdf[pdf$runid >= c_runid, ]
+      # Truncate the path to start exactly at the cached runid.
+      pdf = pdf[pdf$runid >= c_runid, , drop = FALSE]
 
-      # Mark run_df globally so code generators know this runid can act as a load point
+      # Mark run_df globally so code generators know this runid can act as a
+      # load point.
       cache_row_idx = match(c_runid, run_df$runid)
-      drf$run_df$has_file_cache[cache_row_idx] = TRUE
-
-      # Match to cache filename
-      cache_filename = paste0(cache_dir,"/", c_runid, "_cache.dta")
-      drf$run_df$drf_cache_file[cache_row_idx] = cache_filename[1]
-
-      cache_applied = TRUE
+      if (!is.na(cache_row_idx)) {
+        drf$run_df$has_file_cache[cache_row_idx] = TRUE
+        drf$run_df$drf_cache_file[cache_row_idx] =
+          file.path(cache_dir, paste0(c_runid, "_cache.dta"))
+      }
     }
+
     new_path_df_list[[i]] = pdf
   }
+
   new_path_df = bind_rows(new_path_df_list)
 
   if (is.null(just_pids)) {
     drf$path_df = new_path_df
   } else {
-    old_path_df = anti_join(drf$path_df, new_path_df, by="pid")
+    old_path_df = anti_join(drf$path_df, new_path_df, by = "pid")
     drf$path_df = bind_rows(new_path_df, old_path_df) %>%
       arrange(pid, runid)
   }
-  return(drf)
+
+  refresh_drf_after_cache_apply(drf)
 }

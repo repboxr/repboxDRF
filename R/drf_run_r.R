@@ -37,6 +37,7 @@ example = function() {
 drf_get_data = function(runid=pid, drf, update_rcode=FALSE, exec_env = new.env(parent = globalenv()), filtered=TRUE, pid=NULL, use_mcache=TRUE) {
   restore.point("drf_get_data")
   project_dir = drf$project_dir
+
   if (is.null(runid)) {
     stop("Specify a runid (or pid as synonym).")
   }
@@ -87,15 +88,19 @@ drf_get_data = function(runid=pid, drf, update_rcode=FALSE, exec_env = new.env(p
     run_df = drf_run_df_create_rcode(run_df, runids=path_df_full$runid)
   }
   rows = match(exec_runids, run_df$runid)
-  # don't remove those rows might be used for cache
-  #rows = rows[run_df$rcode[rows] != ""]
-
   run_df = run_df[rows,]
 
   rcode = run_df$rcode
 
   if (length(rcode)==0) {
     stop("No R code found for getting data. That looks like a bug.")
+  }
+
+  # If there is an error in the translation path return NULL
+  drf = drf_sync_r_err_runids(drf)
+  if (any(run_df$runid %in% drf$r_err_runids)) {
+    cat("\nSkip as R translation error on path was noted earlier.\n")
+    return(NULL)
   }
 
   # INJECT CACHE LOAD CODE IF APPLICABLE ---
@@ -124,7 +129,17 @@ drf_get_data = function(runid=pid, drf, update_rcode=FALSE, exec_env = new.env(p
     rcode = c(rcode, scalar_code, filter_code)
   }
 
-  data = drf_eval_create_data_r_code(project_dir = drf$project_dir, rcode=rcode,runid=runid, exec_env=exec_env)
+  res = drf_eval_create_data_r_code(project_dir = drf$project_dir, rcode=rcode,runid=runid, exec_env=exec_env)
+
+  data = res$data
+
+  # Don't return data if a new translation error was detected
+  if (res$has_err) {
+    err_lines = res$err_line[res$err_line<=NROW(run_df)]
+    runids = run_df$runid[err_lines]
+    drf = drf_sync_r_err_runids(drf,runids)
+    return(NULL)
+  }
 
   if (use_mcache & filtered & !is.null(data)) {
     drf_store_if_mcache_cand(data, runid = runid, project_dir = drf$project_dir)
@@ -133,6 +148,31 @@ drf_get_data = function(runid=pid, drf, update_rcode=FALSE, exec_env = new.env(p
   data
 }
 
+# We store info about runids whose r translation threw an error
+# those runids will then be omitted from the translation to save
+# tryCatch time, which can be surprisingly time consuming.
+drf_sync_r_err_runids = function(drf, runids=NULL) {
+  err_dir = file.path(drf$project_dir, "drf/r_err_runids")
+
+  if (dir.exists(err_dir)) {
+    file_runids = as.integer(list.files(err_dir,pattern = "[0-9]+", full.names=FALSE))
+    file_runids = file_runids[!is.na(file_runids)]
+  } else {
+    file_runids = NULL
+  }
+  drf_runids = union(drf$r_err_runids, runids)
+
+  to_file_err_runids = setdiff(drf_runids, file_runids)
+  for (runid in to_file_err_runids){
+    if (!dir.exists(err_dir)) dir.create(err_dir, recursive = TRUE)
+    writeLines("", file.path(err_dir, runid))
+  }
+  drf$r_err_runids = union(drf_runids, file_runids)
+  drf
+}
+
+
+
 drf_eval_create_data_r_code = function(project_dir, rcode, runid=NULL, exec_env=NULL) {
   restore.point("drf_eval_create_data_r_code")
   env = new.env(parent = globalenv())
@@ -140,37 +180,161 @@ drf_eval_create_data_r_code = function(project_dir, rcode, runid=NULL, exec_env=
   env$data = exec_env[["data"]]
 
   rcode_call = parse(text = paste0(rcode, collapse="\n"))
-  res = try(eval(rcode_call, envir = env), silent=TRUE)
-  if (is(res,"try-error")) {
-    exec_env = new.env(parent = globalenv())
-    data = drf_eval_create_data_r_code_stepwise(project_dir, rcode, env, runid=runid)
+
+  err = NULL
+  tryCatch(
+    eval(rcode_call, envir = env),
+    error = function(e) {
+      err <<- e
+      NULL
+    }
+  )
+  if (!is.null(err)) {
+    env = new.env(parent = globalenv())
+    res = drf_eval_create_data_r_code_stepwise(project_dir, rcode, env, runid=runid)
+    data = res$data
+    has_err = res$has_err
+    err_line = res$err_line
   } else {
     data = env$data
+    has_err = FALSE
+    err_line = NULL
   }
-  data
+  return(list(data=data, has_err=has_err, err_line = err_line))
 }
 
-# eval r code stepwise with try catch: return error info
+
 drf_eval_create_data_r_code_stepwise = function(project_dir, rcode, env, runid=NULL) {
   restore.point("drf_eval_r_code_stepwise")
-  env$data=NULL
-  env$project_dir = drf$project_dir
+
+  env$data = NULL
+  env$project_dir = project_dir
+
+  rcode = trimws(rcode)
+
   has_err = FALSE
+  err_line = NULL
+
   for (i in seq_along(rcode)) {
-    code = rcode[i]
-    if (trimws(code)=="") next
-    res = try({
-      rcode_call = parse(text = paste0(code, collapse="\n"))
-      eval(rcode_call, envir = env)
-    },silent = TRUE)
-    if (is(res, "try-error") & !has_err) {
+    #cat("\n",i, " ", rcode[i])
+    err = NULL
+    if (rcode[i]=="") next
+
+    tryCatch(
+      {
+        expr = parse(text=rcode[i])
+        eval(expr, envir = env)
+      },
+      error = function(e) {
+        err <<- e
+        NULL
+      }
+    )
+    if (!is.null(err) && !has_err) {
       has_err = TRUE
-      repbox_problem(msg = paste0("runid=", runid, " has error in drf_get_data (R translation of data preparation):\n\n",code,"\n\n",  as.character(res)),type="r_trans_get_data", fail_action = "msg",project_dir = drf$project_dir,runid = runid)
+      err_line = i
+      code = rcode[i]
+      msg = paste0(
+        "runid=", runid,
+        " has error in drf_get_data (R translation of data preparation):\n\n",
+        code, "\n\n",
+        conditionMessage(err)
+      )
+      repbox_problem(
+        msg,
+        type = "r_trans_get_data",
+        fail_action = "msg",
+        project_dir = project_dir,
+        runid = runid
+      )
+      return(list(data=NULL, has_err=TRUE, err_line=err_line))
     }
   }
-  if (FALSE) {
-    li = as.list(env)
-  }
-  env$data
 
+  list(data = env$data, has_err=FALSE, err_line=NULL)
 }
+
+
+# drf_eval_create_data_r_code = function(project_dir, rcode, runid=NULL, exec_env=NULL) {
+#   restore.point("drf_eval_create_data_r_code")
+#   env = new.env(parent = globalenv())
+#   env$project_dir = project_dir
+#   env$data = exec_env[["data"]]
+#
+#   rcode_call = parse(text = paste0(rcode, collapse="\n"))
+#
+#   err = NULL
+#   tryCatch(
+#     eval(rcode_call, envir = env),
+#     error = function(e) {
+#       err <<- e
+#       NULL
+#     }
+#   )
+#   if (!is.null(err)) {
+#     env = new.env(parent = globalenv())
+#     res = drf_eval_create_data_r_code_stepwise(project_dir, rcode, env, runid=runid)
+#     data = res$data
+#     has_err = res$has_err
+#     err_lines = res$err_lines
+#   } else {
+#     data = env$data
+#     has_err = FALSE
+#     err_lines = NULL
+#   }
+#   return(list(data=data, has_err=has_err, err_lines = err_lines))
+# }
+#
+#
+# drf_eval_create_data_r_code_stepwise = function(project_dir, rcode, env, runid=NULL) {
+#   restore.point("drf_eval_r_code_stepwise")
+#
+#   env$data = NULL
+#   env$project_dir = project_dir
+#
+#   rcode = trimws(rcode)
+#
+#   has_err = FALSE
+#   err_lines = NULL
+#
+#   for (i in seq_along(rcode)) {
+#     #cat("\n",i, " ", rcode[i])
+#     err = NULL
+#     if (rcode[i]=="") next
+#
+#     tryCatch(
+#       {
+#         expr = parse(text=rcode[i])
+#         eval(expr, envir = env)
+#       },
+#       error = function(e) {
+#         err <<- e
+#         NULL
+#       }
+#     )
+#     if (!is.null(err)) {
+#       err_lines = c(err_lines, i)
+#     }
+#
+#     if (!is.null(err) && !has_err) {
+#       has_err = TRUE
+#
+#       code = rcode[i]
+#       msg = paste0(
+#         "runid=", runid,
+#         " has error in drf_get_data (R translation of data preparation):\n\n",
+#         code, "\n\n",
+#         conditionMessage(err)
+#       )
+#       repbox_problem(
+#         msg,
+#         type = "r_trans_get_data",
+#         fail_action = "msg",
+#         project_dir = project_dir,
+#         runid = runid
+#       )
+#     }
+#   }
+#
+#   list(data = env$data, has_err=has_err, err_lines=err_lines)
+# }
