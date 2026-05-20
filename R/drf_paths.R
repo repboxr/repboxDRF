@@ -114,14 +114,14 @@ find_data_run_path = function(pid_row, srun_df, pid=NULL) {
   allow = c(cmd_types$scalar, cmd_types$xtset)
 
   keep = seq_along(path) %in% c(1, length(path)) |
-    srun_df$is_mod[path] |
-    srun_df$cmd[path] %in% allow |
+    ((srun_df$is_mod[path] | srun_df$cmd[path] %in% allow) & srun_df$ok[path]) |
     srun_df$runid[path] %in% pid
 
   path = path[keep]
 
   return( tibble(pid=srun_df$runid[pid_row], runid=srun_df$runid[path]))
 }
+
 
 
 # Only works for run_df that have a single rootdonum

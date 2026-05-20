@@ -98,7 +98,11 @@ drf_stata_code_df = function(drf,runids=NULL, path_merge = c("none", "load", "na
     run_df$aux_cmd_type = rep("", NROW(run_df))
   }
 
-  run_df$code = run_df$cmdline
+  #run_df$code = run_df$cmdline
+  # If original Stata run had an error and line is
+  # still in path add capture noisily
+  run_df$code = ifelse(is.na(run_df$ok) | run_df$ok, run_df$cmdline, paste0("capture noisily ", run_df$cmdline))
+
 
   run_df = drf_replace_run_df_code_data_path(run_df = run_df, drf=drf)
 
