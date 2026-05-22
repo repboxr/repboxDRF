@@ -29,18 +29,26 @@ example = function() {
 #' The main function for metareg regressions
 #' get the data set for a particular regression specified with runid
 
+#' The main function for metareg regressions
+#' get the data set for a particular regression specified with runid
 #' @param runid The runid of the command (usually regression) for which the data set shall be obtained
 #' @param drf The drf object loaded with drf_load(project_dir)
 #' @param update_rcode Set TRUE if the repbox code for R translation has been updated and the old R code is no longer up-to-date. Mostly relevant during development of the repbox package.
 #' @param exec_env in which environment shall the R code that loads and modifies the data be evaluated, default a new env.
 #' @param pid Alias for runid in this command (pid stands for path ID which is the runid of the final command in a path from path_df)
-drf_get_data = function(runid=pid, drf, update_rcode=FALSE, exec_env = new.env(parent = globalenv()), filtered=TRUE, pid=NULL, use_mcache=TRUE) {
+#' @param adapt_path_to_caches Whether the drf path for the runid shall be adapted to current cache files before building the data preparation pipeline.
+drf_get_data = function(runid=pid, drf, update_rcode=FALSE, exec_env = new.env(parent = globalenv()), filtered=TRUE, pid=NULL, use_mcache=TRUE, adapt_path_to_caches=TRUE) {
   restore.point("drf_get_data")
   project_dir = drf$project_dir
 
   if (is.null(runid)) {
     stop("Specify a runid (or pid as synonym).")
   }
+
+  if (adapt_path_to_caches) {
+    drf = drf_apply_caches(drf, just_pids = runid)
+  }
+
   runids = drf_runids(drf)
   if (!runid %in% runids) {
     stop("runid is not part of any DRF path. We only build paths that lead to a successfully run regression.")
@@ -85,7 +93,7 @@ drf_get_data = function(runid=pid, drf, update_rcode=FALSE, exec_env = new.env(p
   run_df = drf$run_df
   if (!has_col(run_df, "rcode") | update_rcode) {
     # Ensure full context is passed to rcode generation, including the target `pid`
-    run_df = drf_run_df_create_rcode(run_df, runids=path_df_full$runid)
+    run_df = drf_run_df_create_rcode(run_df, runids=path_df_full$runid, drf=drf)
   }
   rows = match(exec_runids, run_df$runid)
   run_df = run_df[rows,]
@@ -98,7 +106,13 @@ drf_get_data = function(runid=pid, drf, update_rcode=FALSE, exec_env = new.env(p
 
   # If there is an error in the translation path return NULL
   drf = drf_sync_r_err_runids(drf)
-  if (any(run_df$runid %in% drf$r_err_runids)) {
+
+  check_runids = run_df$runid
+  if (NROW(run_df) > 0 && isTRUE(run_df$has_file_cache[1])) {
+    check_runids = check_runids[-1]
+  }
+
+  if (any(check_runids %in% drf$r_err_runids)) {
     cat("\nSkip as R translation error on path was noted earlier.\n")
     return(NULL)
   }
