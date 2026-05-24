@@ -30,6 +30,7 @@ drf_stata_cmd_types = function() {
     # Commands that modify data and can be translated to R
     mod = c("g","ge","gen","generate","replace","drop","keep","rename","merge","egen","xtset","tsset","iis", "xtile","pctile","append","tabulate","tabul","tabu", "tab","ta","encode","predict","xi", "collapse", "sort","so","tab1", "winsor", "tostring", "destring", "recode", "expand", "reshape", "contract"),
     #scalar = c("scalar"),
+
     # Commands that modify data but cannot be translated to R
     # predict also needs cache because it may use
     # results from previous regression
