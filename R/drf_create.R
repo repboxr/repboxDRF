@@ -46,6 +46,9 @@ drf_create = function(project_dir, parcels=list(), acmds = drf_acmds(), overwrit
 
   drf_copy_org_data(drf=drf, move_from_mod=move_from_mod)
 
+
+  drf = drf_add_loop_ignore(drf)
+
   # Incorporate Caches cleanly
   drf = drf_import_stata_caches(drf, move = move_from_mod)
   drf = drf_apply_caches(drf)

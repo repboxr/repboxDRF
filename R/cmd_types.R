@@ -4,7 +4,7 @@ helper_make_drf_stata_cmd_types_vec = function() {
   cmd_types = drf_stata_cmd_types()
   types = names(cmd_types)
   res = unlist(lapply(types, function(type) {
-    if (type=="need_cache") return(NULL)
+    #if (type=="need_cache") return(NULL)
     cmds = cmd_types[[type]]
     if (type=="possible_mod") type="mod"
     res = rep(type, length(cmds))
@@ -34,7 +34,7 @@ drf_stata_cmd_types = function() {
     # Commands that modify data but cannot be translated to R
     # predict also needs cache because it may use
     # results from previous regression
-    need_cache = c("merge","xtile","pctile","append","tabulate","tabul","tabu", "tab","ta","encode","predict","xi","collapse","sort","so","tab1", "winsor"),
+    #need_cache = c("merge","xtile","pctile","append","tabulate","tabul","tabu", "tab","ta","encode","predict","xi","collapse","sort","so","tab1", "winsor"),
 
     # Commands that under certain conditions modify the data
     # tabulate creates vpidiables if called with the gen option

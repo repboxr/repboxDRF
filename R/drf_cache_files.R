@@ -1,5 +1,5 @@
 example = function() {
-  project_dir = "~/repbox/projects/aejapp_1_3_4"
+  project_dir = "~/repbox/projects_test/test"
   drf = drf_load(project_dir)
 
   run_df = drf$run_df
@@ -205,4 +205,40 @@ drf_apply_caches = function(drf, just_pids=NULL) {
   }
 
   refresh_drf_after_cache_apply(drf)
+}
+
+drf_get_available_caches = function(drf, project_dir=drf$project_dir) {
+  cache_dir = file.path(project_dir, "drf", "cached_dta")
+  if (!dir.exists(cache_dir))
+    return(NULL)
+
+  cache_files = list.files(cache_dir, glob2rx("*.dta"), full.names = FALSE)
+  available_caches = as.integer(str.left.of(basename(cache_files), "_cache.dta"))
+  available_caches = available_caches[!is.na(available_caches)]
+  available_caches
+}
+
+drf_get_highest_cached_runids = function(drf, pids=NULL) {
+  restore.point("drf_get_highest_cached_runids")
+  cached_runids =  drf_get_available_caches(drf)
+  if (FALSE)
+    cached_runids = c(14)
+
+  path_df = drf$path_df
+  if (!is.null(pids)) {
+    path_df = path_df %>% filter(pid %in% pids)
+  } else {
+    pids = unique(path_df$pid)
+  }
+
+  cached_df = path_df %>%
+    select(pid, cached_runid=runid) %>%
+    filter(cached_runid %in% cached_runids) %>%
+    group_by(pid) %>%
+    slice(n()) %>%
+    ungroup()
+
+  df = data.frame(pid=pids) %>%
+    left_join(cached_df, by="pid")
+  df
 }
