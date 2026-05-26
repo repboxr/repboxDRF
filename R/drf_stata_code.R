@@ -60,7 +60,7 @@ drf_remove_non_mod_reg_from_path_df = function(path_df, drf) {
   path_df
 }
 
-drf_stata_code_df = function(drf,runids=NULL, path_merge = c("none", "load", "natural", "load_natural")[4], cache_after_runids = drf$cache_after_runids, cache_after_cmd=drf$cache_after_cmd) {
+drf_stata_code_df = function(drf,runids=NULL, path_merge = c("none", "load", "natural", "load_natural")[4], cache_after_runids = drf$cache_after_runids, cache_after_cmd=drf$cache_after_cmd, write_e_r = TRUE, overwrite_e_r = FALSE) {
   restore.point("drf_stata_code_skel")
   project_dir = drf$project_dir
   pids = runids
@@ -85,11 +85,9 @@ drf_stata_code_df = function(drf,runids=NULL, path_merge = c("none", "load", "na
     } else if (isTRUE(rdf$has_file_cache[1])) {
       # load file cache and keep code that runs regression
       rdf$pre[1] = paste0('use "', rdf$drf_cache_file[1], '", clear\n\n')
-      #rdf$code[1] = paste0('use "', rdf$drf_cache_file[1], '", clear\ncapture noisily ', rdf$code[1])
     }
     rdf
   }
-
 
   run_df = drf$run_df
   run_df = run_df %>% semi_join(path_df, by="runid")
@@ -98,19 +96,18 @@ drf_stata_code_df = function(drf,runids=NULL, path_merge = c("none", "load", "na
     run_df$aux_cmd_type = rep("", NROW(run_df))
   }
 
-  #run_df$code = run_df$cmdline
-  # If original Stata run had an error and line is
-  # still in path add capture noisily
   run_df$code = ifelse(is.na(run_df$ok) | run_df$ok, run_df$cmdline, paste0("capture noisily ", run_df$cmdline))
-
 
   run_df = drf_replace_run_df_code_data_path(run_df = run_df, drf=drf)
 
   # Only relevant for 1st element in paths
   run_df$data_path = ifelse(is.na(run_df$drf_cache_file) | run_df$drf_cache_file=="", run_df$org_data_path, run_df$drf_cache_file)
 
-
   run_df = drf_code_stata_add_save_cache(project_dir = project_dir, run_df=run_df,cache_after_runids = cache_after_runids, cache_after_cmd = cache_after_cmd)
+
+  if (write_e_r) {
+    run_df = drf_add_code_store_e_r(run_df, drf$dep_df, project_dir, overwrite_e_r)
+  }
 
   path_li = split(path_df, path_df$pid)
   code_li = NULL
@@ -183,7 +180,6 @@ drf_stata_code_df = function(drf,runids=NULL, path_merge = c("none", "load", "na
 
       rdf = rdf %>%
         transmute(pid=pid,runid=runid, code=code, pre=pre, post="", cmd_type=cmd_type, cmd=cmd, is_target = runid==pid, aux_cmd_type="", clear=FALSE)
-
 
       ps = ps_df[ps_df$pid==pid,]
       if (ps$preserve_data) {
@@ -362,3 +358,57 @@ drf_code_stata_path_header = function(sc_df, header_tpl = "\n***** Path for runi
   },to_col=to_col, append_mode=append_mode, just_path_pos="start")
 
 }
+
+
+drf_add_code_store_e_r = function(run_df, dep_df, project_dir, overwrite_e_r = FALSE) {
+  restore.point("drf_add_code_store_e_r")
+  if (is.null(dep_df) || NROW(dep_df) == 0) return(run_df)
+
+  e_r_deps = dep_df %>% dplyr::filter(dep_type %in% c("e", "r"), !is.na(source_runid)) %>%
+    dplyr::select(source_runid, dep_type, macro_name) %>% dplyr::distinct()
+
+  if (NROW(e_r_deps) == 0) return(run_df)
+
+  outdir = file.path(project_dir, "drf", "stata_e_r")
+  if (!dir.exists(outdir)) dir.create(outdir, recursive = TRUE, showWarnings = FALSE)
+
+  for (i in seq_len(NROW(e_r_deps))) {
+    s_runid = e_r_deps$source_runid[i]
+    m_name = e_r_deps$macro_name[i]
+
+    prefix = substr(m_name, 1, 1) # 'e' or 'r'
+    inner = gsub("^[er]\\(|\\)$", "", m_name)
+
+    if (m_name == "e(sample)") {
+      outfile = file.path(outdir, paste0(prefix, "_", s_runid, "_", inner, ".dta"))
+      if (!overwrite_e_r && file.exists(outfile)) next
+      save_code = paste0(
+        "\n* Save e(sample) for downstream R dependency\n",
+        "capture {\n",
+        "  preserve\n",
+        "  gen __esample = e(sample)\n",
+        "  keep __esample\n",
+        "  save \"", outfile, "\", replace\n",
+        "  restore\n",
+        "}\n"
+      )
+    } else {
+      outfile = file.path(outdir, paste0(prefix, "_", s_runid, "_", inner, ".txt"))
+      if (!overwrite_e_r && file.exists(outfile)) next
+      save_code = paste0(
+        "\n* Save macro for downstream R dependency\n",
+        "capture file close _er_file\n",
+        "capture file open _er_file using \"", outfile, "\", write replace\n",
+        "capture file write _er_file (string(", m_name, "))\n",
+        "capture file close _er_file\n"
+      )
+    }
+
+    row_idx = match(s_runid, run_df$runid)
+    if (!is.na(row_idx)) {
+      run_df$code[row_idx] = paste0(run_df$code[row_idx], save_code)
+    }
+  }
+  run_df
+}
+

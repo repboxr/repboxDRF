@@ -92,7 +92,50 @@ drf_run_df_create_rcode = function(run_df=drf$run_df, runids=drf_runids(drf), sc
       run_df$rcode[idx] = code
     }
   }
+
   run_df$rcode = na.val(run_df$rcode, "")
+
+  # Load locally saved Stata dependency values into the R environment
+  if (!is.null(drf) && !is.null(drf$dep_df) && NROW(drf$dep_df) > 0) {
+    for (idx in update_rows) {
+      r_id = run_df$runid[idx]
+      my_deps = drf$dep_df %>% dplyr::filter(runid == r_id, dep_type %in% c("e", "r"), !is.na(source_runid))
+
+      if (NROW(my_deps) > 0) {
+        load_code = c()
+        for (j in seq_len(NROW(my_deps))) {
+          s_runid = my_deps$source_runid[j]
+          m_name = my_deps$macro_name[j]
+          prefix = substr(m_name, 1, 1)
+          inner = gsub("^[er]\\(|\\)$", "", m_name)
+
+          if (m_name == "e(sample)") {
+            outfile = file.path("drf", "stata_e_r", paste0(prefix, "_", s_runid, "_", inner, ".dta"))
+            var_name = "e_sample"
+            load_code = c(load_code, paste0(
+              "if (file.exists(file.path(project_dir, '", outfile, "'))) {\n",
+              "  stata2r_env$", var_name, " = haven::read_dta(file.path(project_dir, '", outfile, "'))$__esample\n",
+              "} else {\n",
+              "  repboxUtils::repbox_problem('Missing dependency file: ", outfile, "', type='missing_dep', project_dir=project_dir, fail_action='warn')\n",
+              "}"
+            ))
+          } else {
+            outfile = file.path("drf", "stata_e_r", paste0(prefix, "_", s_runid, "_", inner, ".txt"))
+            var_name = paste0(prefix, "_", inner)
+            load_code = c(load_code, paste0(
+              "if (file.exists(file.path(project_dir, '", outfile, "'))) {\n",
+              "  stata2r_env$", var_name, " = as.numeric(readLines(file.path(project_dir, '", outfile, "'), warn=FALSE)[1])\n",
+              "} else {\n",
+              "  repboxUtils::repbox_problem('Missing dependency file: ", outfile, "', type='missing_dep', project_dir=project_dir, fail_action='warn')\n",
+              "}"
+            ))
+          }
+        }
+        run_df$rcode[idx] = paste0(paste(load_code, collapse="\n"), "\n", run_df$rcode[idx])
+      }
+    }
+  }
+
   if (NROW(scalar_code)>0) {
     run_df = run_df %>%
       left_join(scalar_code %>% select(runid, scalar_r_code), by="runid") %>%
@@ -100,7 +143,6 @@ drf_run_df_create_rcode = function(run_df=drf$run_df, runids=drf_runids(drf), sc
       mutate(rcode = ifelse(rcode=="", rcode, paste0(scalar_r_code, rcode))) %>%
       select(-scalar_r_code)
   }
-
 
   run_df
 }

@@ -74,72 +74,60 @@ drf_scalar_map_to_scalar_code = function(drf) {
 drf_add_dep_df = function(drf) {
   restore.point("drf_make_deps_df")
   run_df = drf$run_df
-
   cmdlines = run_df$cmdline
-
   run_df$code = run_df$cmdline
 
-  rx_or = function(els) {
-    els = stringi::stri_replace_all_fixed(els, "(","\\(")
-    els = stringi::stri_replace_all_fixed(els, ")","\\)")
-    paste0("\\b(", paste0(els, collapse="|"), ")")
-  }
-
-  make_r_cmds = stata_make_r_cmds()
-
-  run_df = run_df %>% mutate(
-    uses_e =  stringi::stri_detect_regex(code, rx_or(c("e(sample)", "e(N)", "e(r2)", "e(df_r)", "e(rmse)", "e(b)", "e(V)"))),
-    uses_r =  stringi::stri_detect_regex(code, "\\br\\("),
-    uses_xi = stringi::stri_detect_fixed(code, "\\b_I[a-zA-Z0-9_]+"),
-    makes_e = run_df$cmd_type %in% c("reg","quasi_reg"),
-    makes_r = cmd %in% stata_make_r_cmds()
-  )
-
-  run_df$makes_xi = run_df$cmd == "xi"
-  rows = which(run_df$cmd_type %in%  c("reg","quasi_reg"))
-  mxi = stringi::stri_detect_regex(run_df$code[rows], "\\bxi\\:")
-  run_df$makes_xi[rows[mxi]] = TRUE
-
-
   # e() dependencies (via regression commands)
-  make_df = run_df %>%
+  make_df_e = run_df %>%
     filter(cmd_type %in% c("reg","quasi_reg")) %>%
     select(source_runid=runid)
 
-  edep_df = run_df %>%
-    filter(stringi::stri_detect_regex(cmdline, rx_or(c("e(sample)", "e(N)", "e(r2)", "e(df_r)", "e(rmse)", "e(b)", "e(V)")))) %>%
-    select(runid) %>%
-    mutate(dep_type = "e") %>%
-    left_join(make_df,by = join_by(closest(runid > source_runid)),relationship = "many-to-one")
+  e_matches = stringi::stri_extract_all_regex(run_df$cmdline, "\\be\\([a-zA-Z0-9_]+\\)")
+  edep_list = lapply(seq_along(e_matches), function(i) {
+    if (is.na(e_matches[[i]][1])) return(NULL)
+    data.frame(runid = run_df$runid[i], dep_type = "e", macro_name = e_matches[[i]], stringsAsFactors = FALSE)
+  })
+  edep_df = bind_rows(edep_list)
+  if (NROW(edep_df) > 0) {
+    edep_df = edep_df %>% distinct() %>% left_join(make_df_e, by = join_by(closest(runid > source_runid)), relationship = "many-to-one")
+  } else {
+    edep_df = data.frame(runid=integer(), source_runid=integer(), dep_type=character(), macro_name=character())
+  }
 
   # r() dependencies (via commands like summarize)
-  make_df = run_df %>%
+  make_df_r = run_df %>%
     filter(cmd %in% stata_make_r_cmds()) %>%
     select(source_runid=runid)
 
-  rdep_df = run_df %>%
-    filter(stringi::stri_detect_regex(cmdline, "\\br\\(")) %>%
-    select(runid) %>%
-    mutate(dep_type = "r") %>%
-    left_join(make_df,by = join_by(closest(runid > source_runid)),relationship = "many-to-one")
+  r_matches = stringi::stri_extract_all_regex(run_df$cmdline, "\\br\\([a-zA-Z0-9_]+\\)")
+  rdep_list = lapply(seq_along(r_matches), function(i) {
+    if (is.na(r_matches[[i]][1])) return(NULL)
+    data.frame(runid = run_df$runid[i], dep_type = "r", macro_name = r_matches[[i]], stringsAsFactors = FALSE)
+  })
+  rdep_df = bind_rows(rdep_list)
+  if (NROW(rdep_df) > 0) {
+    rdep_df = rdep_df %>% distinct() %>% left_join(make_df_r, by = join_by(closest(runid > source_runid)), relationship = "many-to-one")
+  } else {
+    rdep_df = data.frame(runid=integer(), source_runid=integer(), dep_type=character(), macro_name=character())
+  }
 
-  # xi dependencies (via xi or xi:)
+  # xi dependencies
   makes_xi = run_df$cmd == "xi"
   rows = which(run_df$cmd_type %in%  c("reg","quasi_reg"))
   mxi = stringi::stri_detect_regex(run_df$cmdline[rows], "\\bxi\\:")
   makes_xi[rows[mxi]] = TRUE
 
-  make_df = data.frame(source_runid = run_df$runid[makes_xi])
+  make_df_xi = data.frame(source_runid = run_df$runid[makes_xi])
 
   xidep_df = run_df %>%
     filter(stringi::stri_detect_regex(cmdline, "\\b_I[a-zA-Z0-9_]+")) %>%
     select(runid) %>%
-    mutate(dep_type = "xi") %>%
-    left_join(make_df,by = join_by(closest(runid > source_runid)),relationship = "many-to-one")
+    mutate(dep_type = "xi", macro_name = "xi") %>%
+    left_join(make_df_xi, by = join_by(closest(runid > source_runid)), relationship = "many-to-one")
 
-  drf$dep_df = bind_rows(edep_df, rdep_df, xidep_df)
+  drf$dep_df = bind_rows(edep_df, rdep_df, xidep_df) %>% filter(!is.na(source_runid))
+
   outfile = file.path(drf$project_dir,"drf/dep_df.Rds")
-
   save_rds_create_dir(drf$dep_df, outfile)
 
   drf
