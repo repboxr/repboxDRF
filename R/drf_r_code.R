@@ -24,16 +24,58 @@ drf_make_r_trans_parcel = function(drf) {
 
 }
 
-# Writes stata code skeleton for direct replication of one or
-# multiple regression commands
-# The regression commands themselves will be palceholder of form
-# {{runid-3562}}
+drf_get_dependency_load_code = function(r_id, drf) {
+  restore.point("drf_get_dependency_load_code")
+  if (is.null(drf$dep_df) || NROW(drf$dep_df) == 0) return(character(0))
 
-# TO DO: omit unneccesary previous reg steps.
-# They are currently always included in path since
-# later regressions may need them if r() or something is used from it.
+  my_deps = drf$dep_df %>%
+    dplyr::filter(runid == r_id, dep_type %in% c("e", "r"), !is.na(source_runid))
 
+  if (NROW(my_deps) == 0) return(character(0))
 
+  m_name = my_deps$macro_name
+  s_runid = my_deps$source_runid
+
+  prefix = stringi::stri_sub(m_name, 1, 1)
+  inner = stringi::stri_replace_all_regex(m_name, "^[er]\\(|\\)$", "")
+
+  is_esample = (m_name == "e(sample)")
+  ext = ifelse(is_esample, ".dta", ".txt")
+
+  # Forward slashes work cleanly in R across OS
+  #outfile = paste0("drf/stata_e_r/", prefix, "_", s_runid, "_", inner, ext)
+  outfile = paste0(prefix, "_", s_runid, "_", inner, ext)
+  #var_name = ifelse(is_esample, "e_sample", paste0(prefix, "_", inner))
+  var_name = paste0(prefix, "_", inner)
+
+  # Vectorized creation of the load code
+  #load_code = paste0("stata2r_env$", var_name,' = repboxDRF::drf_load_e_r_dependency("',drf$project_dir, '", "', outfile, '","', m_name, '")')
+  load_code = paste0("stata2r_env$", var_name,' = repboxDRF::drf_load_e_r_dependency(project_dir,', '"', outfile, '","', m_name, '")')
+
+  return(load_code)
+}
+
+drf_load_e_r_dependency = function(project_dir, file, macro_name) {
+  restore.point("drf_load_e_r_dependency")
+  file_type = tools::file_ext(file)
+  path = file.path(project_dir,"drf/stata_e_r", file)
+
+  if (!file.exists(path)) {
+    repboxUtils::repbox_problem(paste0('Missing dependency file: ', file), type='missing_dep', project_dir=project_dir, fail_action='warn')
+    return(NULL)
+  }
+
+  if (file_type == "dta") {
+    res = haven::read_dta(path)
+    if ("__esample" %in% names(res)) {
+      res = res[["__esample"]]
+    }
+  } else {
+    res = as.numeric(readLines(path, warn=FALSE)[1])
+  }
+
+  res
+}
 
 drf_run_df_create_rcode = function(run_df=drf$run_df, runids=drf_runids(drf), scalar_code = drf$scalar_code, drf=NULL) {
   restore.point("drf_run_df_create_rcode")
@@ -99,38 +141,8 @@ drf_run_df_create_rcode = function(run_df=drf$run_df, runids=drf_runids(drf), sc
   if (!is.null(drf) && !is.null(drf$dep_df) && NROW(drf$dep_df) > 0) {
     for (idx in update_rows) {
       r_id = run_df$runid[idx]
-      my_deps = drf$dep_df %>% dplyr::filter(runid == r_id, dep_type %in% c("e", "r"), !is.na(source_runid))
-
-      if (NROW(my_deps) > 0) {
-        load_code = c()
-        for (j in seq_len(NROW(my_deps))) {
-          s_runid = my_deps$source_runid[j]
-          m_name = my_deps$macro_name[j]
-          prefix = substr(m_name, 1, 1)
-          inner = gsub("^[er]\\(|\\)$", "", m_name)
-
-          if (m_name == "e(sample)") {
-            outfile = file.path("drf", "stata_e_r", paste0(prefix, "_", s_runid, "_", inner, ".dta"))
-            var_name = "e_sample"
-            load_code = c(load_code, paste0(
-              "if (file.exists(file.path(project_dir, '", outfile, "'))) {\n",
-              "  stata2r_env$", var_name, " = haven::read_dta(file.path(project_dir, '", outfile, "'))$__esample\n",
-              "} else {\n",
-              "  repboxUtils::repbox_problem('Missing dependency file: ", outfile, "', type='missing_dep', project_dir=project_dir, fail_action='warn')\n",
-              "}"
-            ))
-          } else {
-            outfile = file.path("drf", "stata_e_r", paste0(prefix, "_", s_runid, "_", inner, ".txt"))
-            var_name = paste0(prefix, "_", inner)
-            load_code = c(load_code, paste0(
-              "if (file.exists(file.path(project_dir, '", outfile, "'))) {\n",
-              "  stata2r_env$", var_name, " = as.numeric(readLines(file.path(project_dir, '", outfile, "'), warn=FALSE)[1])\n",
-              "} else {\n",
-              "  repboxUtils::repbox_problem('Missing dependency file: ", outfile, "', type='missing_dep', project_dir=project_dir, fail_action='warn')\n",
-              "}"
-            ))
-          }
-        }
+      load_code = drf_get_dependency_load_code(r_id, drf)
+      if (length(load_code) > 0) {
         run_df$rcode[idx] = paste0(paste(load_code, collapse="\n"), "\n", run_df$rcode[idx])
       }
     }

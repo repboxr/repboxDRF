@@ -119,6 +119,7 @@ drf_get_data = function(runid=pid, drf, update_rcode=FALSE,
 
   if (filtered) {
     filter_code = drf_get_filter_code(pid, drf)
+    pid_load_code = drf_get_dependency_load_code(pid, drf)
 
     scalar_code = NULL
     if (pid %in% drf$scalar_code$runid) {
@@ -126,7 +127,7 @@ drf_get_data = function(runid=pid, drf, update_rcode=FALSE,
       scalar_code = drf$scalar_code$scalar_r_code[rows]
     }
 
-    rcode = c(rcode, scalar_code, filter_code)
+    rcode = c(rcode, scalar_code, pid_load_code, filter_code)
   }
 
   res = drf_eval_create_data_r_code(
