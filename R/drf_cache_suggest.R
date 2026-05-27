@@ -102,3 +102,23 @@ drf_cut_path_df_for_cache = function(path_df, cache_runids) {
       by = join_by(pid, runid < cache_runid)
     )
 }
+
+# Find for every pid whether the first element in path_df has a cache
+# if yes return that runid otherwise return NA
+drf_get_cached_runids_by_pid = function(drf, pids=NULL) {
+  restore.point("drf_get_cached_runids_of_paths")
+  path_df = drf$path_df
+  if (!is.null(pids)) {
+    path_df = path_df %>% filter(pid %in% pids)
+  }
+  cached_runids = drf_get_cached_runids(drf=drf)
+  df = path_df %>%
+    group_by(pid) %>%
+    slice(1) %>%
+    select(pid, cached_runid = runid) %>%
+    mutate(cached_runid = ifelse(cached_runid %in% cached_runids, cached_runid, NA_integer_))
+  df
+
+
+
+}
