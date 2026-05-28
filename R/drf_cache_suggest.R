@@ -45,7 +45,6 @@ drf_suggest_cache_runids = function(drf,max_caches = Inf,min_score=100, prepare_
 
 drf_suggest_best_cache_runid = function(path_df,  num_pid_exp=0.5) {
   restore.point("drf_suggest_best_cache_runid")
-  project_dir = drf$project_dir
 
   pids = unique(path_df$pid)
   df = path_df %>%

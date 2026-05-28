@@ -83,7 +83,7 @@ drf_run_df_add_data_paths = function(run_df = drf$run_df, drf_dir = drf$drf_dir,
 
 
 
-drf_data_load_needs_clear = function(run_df=NULL, cmd=run_cmd$cmd, cmd_type=run_df$cmd_type) {
+drf_data_load_needs_clear = function(run_df=NULL, cmd=run_df$cmd, cmd_type=run_df$cmd_type) {
   cmd_type %in% c("load")
 }
 

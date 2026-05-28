@@ -10,9 +10,9 @@
 drf_make_paths = function(drf) {
   restore.point("drf_make_paths")
   run_df = drf$run_df; project_dir = drf$project_dir
-  pid = drf$pid
-  if (is.null(drf$pid)) {
-    stop("Please specify drf$pid, the analyis runid of run_df.")
+  pids = drf$pids
+  if (is.null(pids)) {
+    stop("Please specify drf$pids, the analyis runid of run_df.")
   }
 
   type_vec = drf_stata_cmd_types_vec()
@@ -35,7 +35,7 @@ drf_make_paths = function(drf) {
   # Split run_df by root_file_path and compute path_df
   # Then merge path_df again for all run_df
   srun_li = split(run_df,run_df$root_file_path)
-  path_li = lapply(srun_li, find_one_root_data_paths, pid=pid)
+  path_li = lapply(srun_li, find_one_root_data_paths, pids=pids)
   path_df = bind_rows(path_li)
 
   if (NROW(path_df)==0) {
@@ -46,7 +46,7 @@ drf_make_paths = function(drf) {
 }
 
 
-find_one_root_data_paths = function(srun_df, pid) {
+find_one_root_data_paths = function(srun_df, pids) {
   restore.point("find_one_root_data_paths")
 
   srun_df$.ROW = seq_len(NROW(srun_df))
@@ -62,10 +62,10 @@ find_one_root_data_paths = function(srun_df, pid) {
   #srun_df$is_mod = cmd_df$is_mod
   # -------------------------------------------------------------------
 
-  spid_rows = match(pid, srun_df$runid)
+  spid_rows = match(pids, srun_df$runid)
   spid_rows = spid_rows[!is.na(spid_rows)]
 
-  path_df = bind_rows(lapply(spid_rows, find_data_run_path, srun_df = srun_df, pid=pid))
+  path_df = bind_rows(lapply(spid_rows, find_data_run_path, srun_df = srun_df, all_pids = pids))
 
   if (NROW(path_df)==0) return(NULL)
   path_df
@@ -91,7 +91,7 @@ extract_run_tree_from_path_df = function(root, path_df) {
 # FILE: repboxDRF/R/drf_paths.R
 # Replace the existing find_data_run_path function:
 
-find_data_run_path = function(pid_row, srun_df, pid=NULL) {
+find_data_run_path = function(pid_row, srun_df, all_pids=NULL) {
   restore.point("find_data_run_path")
 
   # All runid in same load block until pid
@@ -115,14 +115,12 @@ find_data_run_path = function(pid_row, srun_df, pid=NULL) {
 
   keep = seq_along(path) %in% c(1, length(path)) |
     ((srun_df$is_mod[path] | srun_df$cmd[path] %in% allow) & srun_df$ok[path]) |
-    srun_df$runid[path] %in% pid
+    srun_df$runid[path] %in% all_pids
 
   path = path[keep]
 
   return( tibble(pid=srun_df$runid[pid_row], runid=srun_df$runid[path]))
 }
-
-
 
 # Only works for run_df that have a single rootdonum
 add_load_blocks_to_run_df = function(run_df) {
@@ -144,7 +142,7 @@ add_load_blocks_to_run_df = function(run_df) {
       #rows = which(run_df$load_block == run_df$load_block[r])
       #run_df$load_block[rows] = run_df$load_block[cur_preserve]
     } else {
-      wpidning("Restore command without previous preserve command is encountered!")
+      warning("Restore command without previous preserve command is encountered!")
     }
   }
   run_df

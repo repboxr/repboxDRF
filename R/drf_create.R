@@ -84,7 +84,7 @@ drf_acmds = function() {
 
 drf_find_pid = function(run_df,acmds = drf_acmds()) {
   restore.point("drf_find_pid")
-  run_df$runid[(run_df$cmd %in% acmds) & run_df$ok]
+  run_df$runid[which((run_df$cmd %in% acmds) & run_df$ok)]
 }
 
 require_project_dir = function(project_dir) {

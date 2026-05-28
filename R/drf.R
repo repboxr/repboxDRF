@@ -35,13 +35,16 @@ drf_load = function(project_dir, parcels=list(), apply_caches=TRUE) {
 }
 
 drf_pids = function(drf, path_df=drf$path_df) {
-  if (!is.null(drf[["runids"]])) drf$pids
-  unique(drf$path_df$pid)
+  if (!is.null(drf[["pids"]])) return(drf$pids)
+  if (!is.null(path_df)) return(sort(unique(path_df$pid)))
+  return(NULL)
 }
 
+
 drf_runids = function(drf, path_df=drf$path_df) {
-  if (!is.null(drf[["runids"]])) drf$runids
-  unique(drf$path_df$runid)
+  if (!is.null(drf[["runids"]])) return(drf$runids)
+  if (!is.null(path_df)) return(unique(path_df$runid))
+  return(NULL)
 }
 
 

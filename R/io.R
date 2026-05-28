@@ -20,9 +20,9 @@ drf_load_path_index = function(project_dir) {
   index_df
 }
 
-drf_load_path = function(project_dir, pid, index_df = drf_load_path_index(pid))  {
+drf_load_path = function(project_dir, pid, index_df = drf_load_path_index(project_dir))  {
 
-  row = which(index_df$pid==row)
+  row = which(index_df$pid==pid)
   from = index_df$start_row[row]
   to= index_df$start_row[row+1]-1
   file = file.path(project_dir, "drf/path_df.fst")
