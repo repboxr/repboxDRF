@@ -66,13 +66,13 @@ drf_stata_ensure_use_clear = function(cmdline) {
 
   cmd = stringi::stri_trim_both(cmdline)
 
-  is_use = stringi::stri_detect_regex(
+  is_use_or_import = stringi::stri_detect_regex(
     cmd,
-    "^(u|us|use)\\s+",
+    "^(u|us|use|import|insheet|infix|infile)\\b",
     case_insensitive = TRUE
   )
 
-  if (!any(is_use)) {
+  if (!any(is_use_or_import)) {
     return(cmdline)
   }
 
@@ -82,7 +82,7 @@ drf_stata_ensure_use_clear = function(cmdline) {
     case_insensitive = TRUE
   )
 
-  add = is_use & !has_clear
+  add = is_use_or_import & !has_clear
   if (!any(add)) {
     return(cmdline)
   }
@@ -100,13 +100,74 @@ drf_stata_ensure_use_clear = function(cmdline) {
 }
 
 
-
 #' Replace file paths in cleaned Stata command lines
 #'
 #' @param cmdline Character vector of cleaned Stata commands one per line
 #' @param replacement String to insert in place of the file path
 #' @return Character vector of commands with paths replaced
 replace_stata_cmdline_path = function(cmdline, replacement = '"`r(my_custom_path)\'"', add_clear=TRUE) {
+  restore.point("replace_stata_cmdline_paths")
+
+  if (length(replacement)>1 & length(replacement)!= length(cmdline)) {
+    stop("cmdline and replacement must have same length.")
+  }
+
+  # Ensure replacement is correctly vectorized
+  replacement = rep(replacement, length.out = length(cmdline))
+
+  tab = repboxStata::repbox.re.cmdlines.to.tab(cmdline)
+
+  empty_ph = data.frame(ph = character(0), content = character(0))
+  res_paths = repboxStata::replace.files.and.paths.with.ph(tab, empty_ph)
+
+  if (nrow(res_paths$ph) == 0) {
+    final_cmds = cmdline
+  } else {
+    fph = res_paths$ph
+    fph$content = replacement
+    final_cmds = replace.ph.keep.lines(res_paths$txt, fph)
+  }
+
+  # Fallback for commands where repboxStata static parsing didn't find the path
+  failed_to_replace = (final_cmds == cmdline)
+  if (any(failed_to_replace)) {
+    for (i in which(failed_to_replace)) {
+      cmd = final_cmds[i]
+      # Escape potential '$' symbols in file paths for regex engine
+      safe_repl = gsub("$", "\\$", replacement[i], fixed = TRUE)
+
+      # 1. Try to replace first quoted string, as import/use paths are typically quoted
+      if (stringi::stri_detect_regex(cmd, '"[^"]+"')) {
+        final_cmds[i] = stringi::stri_replace_first_regex(cmd, '"[^"]+"', safe_repl)
+      }
+      # 2. Look for 'using <path>' unquoted
+      else if (stringi::stri_detect_regex(cmd, "\\busing\\s+([^\\s,]+)", case_insensitive=TRUE)) {
+        final_cmds[i] = stringi::stri_replace_first_regex(cmd, "(?i)\\b(using\\s+)([^\\s,]+)", paste0("$1", safe_repl))
+      }
+      # 3. Look for bare command followed by unquoted path e.g. `import excel filename.xlsx, clear`
+      else if (stringi::stri_detect_regex(cmd, "^\\s*(import|use|insheet|infix|infile)\\b", case_insensitive=TRUE)) {
+        final_cmds[i] = stringi::stri_replace_first_regex(cmd, "(?i)^(\\s*(?:import|use|insheet|infix|infile)\\b(?:\\s+(?:excel|delimited|sas|spss))?\\s+)([^\\s,]+)", paste0("$1", safe_repl))
+      }
+    }
+  }
+
+  add_clear = rep(add_clear, length.out = length(final_cmds))
+
+  if (any(add_clear)) {
+    final_cmds[add_clear] = drf_stata_ensure_use_clear(final_cmds[add_clear])
+  }
+
+  final_cmds
+}
+
+
+
+#' Replace file paths in cleaned Stata command lines
+#'
+#' @param cmdline Character vector of cleaned Stata commands one per line
+#' @param replacement String to insert in place of the file path
+#' @return Character vector of commands with paths replaced
+replace_stata_cmdline_path_old = function(cmdline, replacement = '"`r(my_custom_path)\'"', add_clear=TRUE) {
   restore.point("replace_stata_cmdline_paths")
 
   if (length(replacement)>1 & length(replacement)!= length(cmdline)) {
