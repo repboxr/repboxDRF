@@ -60,7 +60,7 @@ drf_remove_non_mod_reg_from_path_df = function(path_df, drf) {
   path_df
 }
 
-drf_stata_code_df = function(drf,runids=NULL, path_merge = c("none", "load", "natural", "load_natural")[4], cache_after_runids = drf$cache_after_runids, cache_after_cmd=drf$cache_after_cmd, write_e_r = TRUE, overwrite_e_r = FALSE) {
+drf_stata_code_df = function(drf,runids=NULL, path_merge = c("none", "load", "natural", "load_natural")[4], cache_after_runids = drf$cache_after_runids, cache_after_cmd=drf$cache_after_cmd, write_e_r = TRUE, overwrite_e_r = FALSE, keep_non_mod_reg=FALSE) {
   restore.point("drf_stata_code_skel")
   project_dir = drf$project_dir
   pids = runids
@@ -92,7 +92,7 @@ drf_stata_code_df = function(drf,runids=NULL, path_merge = c("none", "load", "na
   run_df = drf$run_df
   run_df = run_df %>% semi_join(path_df, by="runid")
 
-  if (!has_col(run_df, "aux_cmd_type")) {
+  if (!repboxUtils::has_col(run_df, "aux_cmd_type")) {
     run_df$aux_cmd_type = rep("", NROW(run_df))
   }
 
@@ -115,20 +115,23 @@ drf_stata_code_df = function(drf,runids=NULL, path_merge = c("none", "load", "na
   if (path_merge == "none") {
     code_li = lapply(pids, function(pid) {
       pdf = path_li[[as.character(pid)]]
-      pdf = drf_remove_non_mod_reg_from_path_df(pdf, drf)
+      if (!keep_non_mod_reg)
+        pdf = drf_remove_non_mod_reg_from_path_df(pdf, drf)
 
       rdf = run_df[run_df$runid %in% pdf$runid, ]
       rdf = update_rdf_cache_code(rdf)
       rdf %>%
-        transmute(pid=pid,runid=runid, code=code, pre=pre, post="", cmd_type=cmd_type, cmd=cmd, is_target = runid==pid, aux_cmd_type=na.val(aux_cmd_type,""))
+        transmute(pid=pid,runid=runid, code=code, pre=pre, post="", cmd_type=cmd_type, cmd=cmd, is_target = runid==pid, aux_cmd_type=repboxUtils::na.val(aux_cmd_type,""))
     })
     sc_df = bind_rows(code_li)
+    if (NROW(sc_df) == 0) return(sc_df)
+
     # we now add scalar definitions from scalar map
     sc_df = sc_df %>%
       left_join(drf$scalar_code, by="runid") %>%
       mutate(
-        scalar_stata_code = na.val(scalar_stata_code,""),
-        scalar_r_code = na.val(scalar_r_code,"")
+        scalar_stata_code = repboxUtils::na.val(scalar_stata_code,""),
+        scalar_r_code = repboxUtils::na.val(scalar_r_code,"")
       )
 
     return(sc_df)
@@ -160,7 +163,7 @@ drf_stata_code_df = function(drf,runids=NULL, path_merge = c("none", "load", "na
       ungroup() %>%
       arrange(data_runid, first_runid, last_runid) %>%
       mutate(
-        restore_data = is.true(lag(data_runid)==data_runid),
+        restore_data = repboxUtils::is.true(lag(data_runid)==data_runid),
         preserve_data = !restore_data & data_num_paths > 1
       )
 
@@ -174,7 +177,8 @@ drf_stata_code_df = function(drf,runids=NULL, path_merge = c("none", "load", "na
   if (!merge_natural) {
     code_li = lapply(pids, function(pid) {
       pdf = path_li[[as.character(pid)]]
-      pdf = drf_remove_non_mod_reg_from_path_df(pdf, drf)
+      if (!keep_non_mod_reg)
+        pdf = drf_remove_non_mod_reg_from_path_df(pdf, drf)
       rdf = run_df[run_df$runid %in% pdf$runid, ]
       rdf = update_rdf_cache_code(rdf)
 
@@ -192,12 +196,14 @@ drf_stata_code_df = function(drf,runids=NULL, path_merge = c("none", "load", "na
       rdf
     })
     sc_df = bind_rows(code_li)
+    if (NROW(sc_df) == 0) return(sc_df)
+
     # we now add scalar definitions from scalar map
     sc_df = sc_df %>%
       left_join(drf$scalar_code, by="runid") %>%
       mutate(
-        scalar_stata_code = na.val(scalar_stata_code,""),
-        scalar_r_code = na.val(scalar_r_code,"")
+        scalar_stata_code = repboxUtils::na.val(scalar_stata_code,""),
+        scalar_r_code = repboxUtils::na.val(scalar_r_code,"")
       )
 
     return(sc_df)
@@ -249,14 +255,15 @@ drf_stata_code_df = function(drf,runids=NULL, path_merge = c("none", "load", "na
     code_li[[counter]] = rdf
   }
   sc_df = bind_rows(code_li)
+  if (NROW(sc_df) == 0) return(sc_df)
 
   # we now add scalar definitions from scalar map
   if (!is.null(drf$scalar_code)) {
     sc_df = sc_df %>%
       left_join(drf$scalar_code, by="runid") %>%
       mutate(
-        scalar_stata_code = na.val(scalar_stata_code,""),
-        scalar_r_code = na.val(scalar_r_code,"")
+        scalar_stata_code = repboxUtils::na.val(scalar_stata_code,""),
+        scalar_r_code = repboxUtils::na.val(scalar_r_code,"")
       )
   }
   sc_df

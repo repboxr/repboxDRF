@@ -43,15 +43,21 @@ drf_suggest_cache_runids = function(drf,max_caches = Inf,min_score=100, prepare_
   cached_runids
 }
 
-drf_suggest_best_cache_runid = function(path_df,  num_pid_exp=0.5) {
+drf_suggest_best_cache_runid = function(path_df,  num_pid_exp=0.5, must_include_pids=NULL) {
   restore.point("drf_suggest_best_cache_runid")
 
-  pids = unique(path_df$pid)
+  all_pids = unique(path_df$pid)
+
+  if (!is.null(must_include_pids)) {
+    path_df = path_df %>%
+      filter(pid %in% must_include_pids)
+  }
+
   df = path_df %>%
     # we don't want to cache at a regression
     # since if there is a regression filter
     # the filtered data set is saved
-    filter(!runid %in% pids) %>%
+    filter(!runid %in% all_pids) %>%
     group_by(pid) %>%
     mutate(num_before = (1:n())-1) %>%
     group_by(runid) %>%
