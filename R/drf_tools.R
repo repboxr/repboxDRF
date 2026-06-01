@@ -76,6 +76,16 @@ drf_stata_ensure_use_clear = function(cmdline) {
     return(cmdline)
   }
 
+  # Remove 'replace' option, assuming no commas in filenames.
+  has_comma = stringi::stri_detect_fixed(cmd, ",")
+  to_strip = is_use_or_import & has_comma
+
+  if (any(to_strip)) {
+    parts = stringi::stri_split_fixed(cmd[to_strip], ",", n = 2, simplify = TRUE)
+    parts[, 2] = stringi::stri_replace_all_regex(parts[, 2], "(?i)\\breplace\\b", "")
+    cmd[to_strip] = paste0(parts[, 1], ",", parts[, 2])
+  }
+
   has_clear = stringi::stri_detect_regex(
     cmd,
     "(^|[,[:space:]])clear([,[:space:]]|$)",
@@ -83,19 +93,17 @@ drf_stata_ensure_use_clear = function(cmdline) {
   )
 
   add = is_use_or_import & !has_clear
-  if (!any(add)) {
-    return(cmdline)
+  if (any(add)) {
+    # Recalculate has_comma for the subset
+    has_comma_add = stringi::stri_detect_fixed(cmd[add], ",")
+    cmd[add] = ifelse(
+      has_comma_add,
+      paste0(cmd[add], " clear"),
+      paste0(cmd[add], ", clear")
+    )
   }
 
-  has_comma = stringi::stri_detect_fixed(cmd[add], ",")
-
-  cmd[add] = ifelse(
-    has_comma,
-    paste0(cmd[add], " clear"),
-    paste0(cmd[add], ", clear")
-  )
-
-  cmdline[add] = cmd[add]
+  cmdline[is_use_or_import] = cmd[is_use_or_import]
   cmdline
 }
 
