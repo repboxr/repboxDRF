@@ -366,13 +366,14 @@ drf_code_stata_path_header = function(sc_df, header_tpl = "\n***** Path for runi
 
 }
 
-
 drf_add_code_store_e_r = function(run_df, dep_df, project_dir, overwrite_e_r = FALSE) {
   restore.point("drf_add_code_store_e_r")
   if (is.null(dep_df) || NROW(dep_df) == 0) return(run_df)
 
-  e_r_deps = dep_df %>% dplyr::filter(dep_type %in% c("e", "r"), !is.na(source_runid)) %>%
-    dplyr::select(source_runid, dep_type, macro_name) %>% dplyr::distinct()
+  e_r_deps = dep_df %>%
+    dplyr::filter(dep_type %in% c("e", "r"), !is.na(source_runid)) %>%
+    dplyr::select(source_runid, dep_type, macro_name) %>%
+    dplyr::distinct()
 
   if (NROW(e_r_deps) == 0) return(run_df)
 
@@ -383,25 +384,34 @@ drf_add_code_store_e_r = function(run_df, dep_df, project_dir, overwrite_e_r = F
     s_runid = e_r_deps$source_runid[i]
     m_name = e_r_deps$macro_name[i]
 
-    prefix = substr(m_name, 1, 1) # 'e' or 'r'
-    inner = gsub("^[er]\\(|\\)$", "", m_name)
+    prefix = stringi::stri_sub(m_name, 1, 1) # "e" or "r"
+    inner = stringi::stri_replace_all_regex(m_name, "^[er]\\(|\\)$", "")
 
     if (m_name == "e(sample)") {
       outfile = file.path(outdir, paste0(prefix, "_", s_runid, "_", inner, ".dta"))
       if (!overwrite_e_r && file.exists(outfile)) next
+
       save_code = paste0(
         "\n* Save e(sample) for downstream R dependency\n",
-        "capture {\n",
-        "  preserve\n",
-        "  gen __esample = e(sample)\n",
-        "  keep __esample\n",
-        "  save \"", outfile, "\", replace\n",
-        "  restore\n",
-        "}\n"
+        "tempvar __drf_esample\n",
+        "tempname __drf_frame\n",
+        "capture noisily gen byte `__drf_esample' = e(sample)\n",
+        "if _rc == 0 {\n",
+        "  capture frame drop `__drf_frame'\n",
+        "  capture noisily frame put `__drf_esample', into(`__drf_frame')\n",
+        "  if _rc == 0 {\n",
+        "    capture noisily frame `__drf_frame': rename `__drf_esample' __esample\n",
+        "    capture noisily frame `__drf_frame': keep __esample\n",
+        "    capture noisily frame `__drf_frame': save \"", outfile, "\", replace\n",
+        "  }\n",
+        "  capture frame drop `__drf_frame'\n",
+        "}\n",
+        "capture drop `__drf_esample'\n"
       )
     } else {
       outfile = file.path(outdir, paste0(prefix, "_", s_runid, "_", inner, ".txt"))
       if (!overwrite_e_r && file.exists(outfile)) next
+
       save_code = paste0(
         "\n* Save macro for downstream R dependency\n",
         "capture file close _er_file\n",
@@ -416,6 +426,6 @@ drf_add_code_store_e_r = function(run_df, dep_df, project_dir, overwrite_e_r = F
       run_df$code[row_idx] = paste0(run_df$code[row_idx], save_code)
     }
   }
+
   run_df
 }
-

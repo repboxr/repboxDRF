@@ -84,7 +84,7 @@ drf_run_df_add_data_paths = function(run_df = drf$run_df, drf_dir = drf$drf_dir,
 
 
 drf_data_load_needs_clear = function(run_df=NULL, cmd=run_df$cmd, cmd_type=run_df$cmd_type) {
-  cmd_type %in% c("load")
+  cmd_type %in% c("load", "import")
 }
 
 # This function just replaces the data path
@@ -110,9 +110,34 @@ drf_replace_run_df_code_data_path = function(run_df =drf$run_df, drf_dir = drf$d
 
   # Replace original code that load original data set
   temp = run_df[rows,]
-  org_rows = rows[run_df$has_org_data[rows]]
-  add_clear = drf_data_load_needs_clear(run_df[org_rows,])
-  run_df$code[org_rows] = replace_stata_cmdline_path(run_df$code[org_rows], paste0('"',run_df$org_data_path[org_rows],'"'),add_clear=add_clear)
+
+  run_df$repbox_file = rep("", NROW(run_df))
+
+  set_to_existing_files = function(..., empty="") {
+    cands = list(...)
+    files = rep(empty,NROW(cands[[1]]))
+    for (i in rev(seq_along(cands))) {
+      has = which(file.exists(cands[[i]]))
+      files[has] = cands[[i]][has]
+    }
+    files
+  }
+
+
+  run_df$repbox_file[rows] = set_to_existing_files(
+    run_df$org_data_path[rows],
+    run_df$drf_cache_file[rows]
+  )
+
+  mis_rows = rows[which(run_df$repbox_file[rows]=="")]
+  if (length(mis_rows)>0) {
+    msg = paste0("Could not find supposed to exist data set in drf_dir=", drf_dir," for\n", paste0("runid=", run_df$runid[mis_rows]," org_data_path=",run_df$org_data_path[mis_rows]," drf_cache_file=",run_df$drf_cache_file[mis_rows], collapse="\n"))
+    repbox_problem(msg,type = "missing_drf_data",fail_action = "msg")
+    return(run_df)
+  }
+
+  add_clear = drf_data_load_needs_clear(run_df[rows,])
+  run_df$code[rows] = replace_stata_cmdline_path(run_df$code[rows], paste0('"',run_df$repbox_file[rows],'"'),add_clear=add_clear)
 
   # TO DO: cache replace:
   # If we load a cache, we load the cache file with a complete new load command
