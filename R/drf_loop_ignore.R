@@ -73,7 +73,7 @@ drf_add_loop_ignore = function(drf, save=TRUE) {
   loig_df = drf$path_df %>%
     semi_join(loop_pids_df, by="pid") %>%
     left_join(loop_pids_df, by="pid") %>%
-    left_join(run_df %>% select(runid, loopid, loop_iter)) %>%
+    left_join(run_df %>% select(runid, loopid, loop_iter), by="runid") %>%
     mutate(remove = loopid > 0 & loopid == pid_loopid & loop_iter < pid_loop_iter) %>%
     filter(remove)
 
