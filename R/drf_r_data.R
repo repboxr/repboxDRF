@@ -29,10 +29,18 @@ drf_load_data = function(project_dir, rel_path, ..., add_org_row=isTRUE(getOptio
   }
 
   ext = tolower(tools::file_ext(file))
+  is_num_ext = stringi::stri_detect_regex(ext, "^[0-9]+$")
   if (ext=="dta") {
     data = haven::read_dta(file)
   } else if (ext=="rds") {
     data = readRDS(file)
+  } else if (is_num_ext) {
+    # temporary files like "St00847.000001" which might be dta files
+    data = try(haven::read_dta(file),silent = TRUE)
+    if (is(data, "try-error")) {
+      stop(paste0("Cannot load the temporary file ", file, " as Stata dta file. Different format."))
+      return(NULL)
+    }
   } else {
     data = rio::import(file)
   }
