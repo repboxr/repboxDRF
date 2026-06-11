@@ -292,3 +292,7 @@ drf_sync_r_err_runids = function(drf, runids=NULL) {
   drf
 }
 
+drf_clear_r_err_runids = function(project_dir) {
+  files = list.files(file.path(project_dir, "drf/r_err_runids"), "[0-9]*", full.names = TRUE)
+  file.remove(files)
+}
