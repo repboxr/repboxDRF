@@ -47,7 +47,7 @@ drf_get_dependency_load_code = function(r_id, drf) {
   var_name = paste0(prefix, "_", inner)
 
   # Vectorized creation of the load code
-  load_code = paste0("stata2r::stata2r_env$", var_name,' = repboxDRF::drf_load_e_r_dependency(project_dir,', '"', outfile, '","', m_name, '")')
+  load_code = paste0("stata2r::set_stata2r_env(", var_name,' = repboxDRF::drf_load_e_r_dependency(project_dir,', '"', outfile, '","', m_name, '"))')
 
   return(load_code)
 }

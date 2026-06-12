@@ -6,7 +6,11 @@ Data file caches are stored in `drf/cached_dta/{runid}_cache.dta`.
 
 They cache the data set **AFTER** the command was run. 
 
+OLD BEHAVIOR:
 For a regression they store the filtered data set including the if / in condition.
+
+NEW BEHAVIOR:
+Also for regressions we don't store the filtered data but just the data set as it is after the regression (e.g. including xi).
 
 ## memore cache
 

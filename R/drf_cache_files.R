@@ -89,21 +89,6 @@ drf_find_save_cache = function(path_df, c_runids, drf) {
   dep_df = drf$dep_df
   dep_df = dep_df %>% filter(dep_type != "xi")
 
-  # A regression cache that is not the pid
-  # is not save if it has an if or an in filter condition
-  run_df = drf$run_df
-  pid = path_df$pid[1]
-  rows = match(c_runids, run_df$runid)
-  is_save = (!run_df$cmd_type[rows] %in% c("reg","quasi_reg")) | (c_runids == pid)
-
-  if (any(!is_save)) {
-    code = run_df$cmdline[rows[!is_save]]
-    in_match = stringi::stri_detect_regex(code, "\\b(?:in)\\s+(.*)$")
-    if_match = stringi::stri_detect_regex(code, "\\b(?:if)\\s+(.*)$")
-    is_save[!in_match & !if_match] = TRUE
-  }
-  c_runids = c_runids[is_save]
-
   is_save = function(c_runid) {
     skipped_runids = path_df$runid[path_df$runid <= c_runid]
     remaining_runids = path_df$runid[path_df$runid > c_runid]
@@ -112,14 +97,12 @@ drf_find_save_cache = function(path_df, c_runids, drf) {
     !has_dep
   }
 
-
   for (c_runid in rev(sort(c_runids))) {
     if (is_save(c_runid)) {
       return(c_runid)
     }
   }
   return(NULL)
-
 }
 
 
