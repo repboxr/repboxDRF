@@ -34,6 +34,17 @@ drf_make_paths = function(drf) {
 
   # Split run_df by root_file_path and compute path_df
   # Then merge path_df again for all run_df
+
+  # FIX: Prevent split() from dropping NA roots.
+  # Fall back to file_path to isolate lost executions correctly.
+
+  if (anyNA(run_df$root_file_path)) {
+    repbox_problem(msg="Some run_df$root_file_path were NA set to file_path to generate drf$path_df. Might be problematic if do files cannot be run independently from each other.",type="drf_root_file_path_NA", fail_action="msg", project_dir=drf$project_dir, runid=NA)
+    run_df = run_df %>%
+      mutate(root_file_path = ifelse(is.na(root_file_path), file_path, root_file_path))
+
+  }
+
   srun_li = split(run_df,run_df$root_file_path)
   path_li = lapply(srun_li, find_one_root_data_paths, pids=pids)
   path_df = bind_rows(path_li)

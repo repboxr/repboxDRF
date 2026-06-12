@@ -36,7 +36,11 @@ drf_add_scalar_map = function(drf) {
 
   drf$scalar_map = scalar_map %>%
     left_join(
-      scalar_df %>% select(scalar_var, source_runid=runid,scalar_val),
+      scalar_df %>%
+        select(scalar_var, source_runid=runid, scalar_val) %>%
+        group_by(scalar_var, source_runid) %>%
+        slice_tail(n = 1) %>%
+        ungroup(),
       by = join_by(
         scalar_var,
         closest(runid >= source_runid)
