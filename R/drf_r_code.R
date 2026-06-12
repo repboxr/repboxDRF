@@ -43,14 +43,11 @@ drf_get_dependency_load_code = function(r_id, drf) {
   ext = ifelse(is_esample, ".dta", ".txt")
 
   # Forward slashes work cleanly in R across OS
-  #outfile = paste0("drf/stata_e_r/", prefix, "_", s_runid, "_", inner, ext)
   outfile = paste0(prefix, "_", s_runid, "_", inner, ext)
-  #var_name = ifelse(is_esample, "e_sample", paste0(prefix, "_", inner))
   var_name = paste0(prefix, "_", inner)
 
   # Vectorized creation of the load code
-  #load_code = paste0("stata2r_env$", var_name,' = repboxDRF::drf_load_e_r_dependency("',drf$project_dir, '", "', outfile, '","', m_name, '")')
-  load_code = paste0("stata2r_env$", var_name,' = repboxDRF::drf_load_e_r_dependency(project_dir,', '"', outfile, '","', m_name, '")')
+  load_code = paste0("stata2r::stata2r_env$", var_name,' = repboxDRF::drf_load_e_r_dependency(project_dir,', '"', outfile, '","', m_name, '")')
 
   return(load_code)
 }
