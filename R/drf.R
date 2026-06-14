@@ -9,7 +9,6 @@ example = function() {
 
 }
 
-
 # To do: variant that is faster for selected paths
 drf_load = function(project_dir, parcels=list(), apply_caches=TRUE) {
   restore.point("drf_load")
@@ -23,6 +22,14 @@ drf_load = function(project_dir, parcels=list(), apply_caches=TRUE) {
   drf = drf_scalar_map_to_scalar_code(drf)
 
   drf$path_df = drf_load_path_df(drf=drf)
+
+  # Check if paths are broken (e.g. missing cache files)
+  if (!drf_check_path_df(drf)) {
+    cat("\nMissing cache files detected for starting paths. Recreating DRF to restore full paths...\n")
+    drf = drf_create(project_dir, parcels = parcels, overwrite = TRUE)
+    return(drf)
+  }
+
   drf$path_df = drf_add_path_df_cols_for_cache(drf=drf)
   drf$runids = unique(drf$path_df$runid)
   drf$pids = unique(drf$path_df$pid)
@@ -116,5 +123,33 @@ drf_require = function(cond, msg, drf) {
   if (!isTRUE(all(cond))) {
     stop(msg)
   }
+}
+
+
+drf_check_path_df = function(drf) {
+  restore.point("drf_check_path_df")
+
+  if (is.null(drf$path_df) || NROW(drf$path_df) == 0) return(TRUE)
+  if (is.null(drf$run_df) || NROW(drf$run_df) == 0) return(TRUE)
+
+  # Find the starting runid for each path
+  start_df = drf$path_df %>%
+    dplyr::group_by(pid) %>%
+    dplyr::summarize(start_runid = min(runid), .groups = "drop")
+
+  # Join with run_df to inspect the properties of these starting nodes
+  check_df = start_df %>%
+    dplyr::left_join(drf$run_df, by = c("start_runid" = "runid"))
+
+  # A path is broken if it starts with a command that is natively NOT a load command
+  # (or preserve/restore) AND it does not have an active file cache on disk.
+  broken = check_df %>%
+    dplyr::filter(!has_file_cache & !cmd_type %in% c("load", "preserve", "restore"))
+
+  if (NROW(broken) > 0) {
+    return(FALSE)
+  }
+
+  return(TRUE)
 }
 
