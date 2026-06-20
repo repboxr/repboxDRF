@@ -19,11 +19,23 @@ drf_load_loop_ignore_info = function(drf) {
   drf
 }
 
-drf_apply_loop_ignore = function(drf, path_df = drf$path_df) {
+drf_apply_loop_ignore = function(drf, path_df = drf$path_df, keep_cached_runid=TRUE) {
+  restore.point("drf_apply_loop_ignore")
   if (is.null(drf$loig_df)) {
     drf = drf_load_loop_ignore_info(drf)
   }
-  drf$path_df = anti_join(path_df, drf$loig_df, by = c("pid", "runid"))
+
+
+  loig_df = drf$loig_df
+
+  # we don't want to drop cached runids since then we cannot
+  # load that cache and we can get an error later. Was the case in aejapp_1_2_4
+  if (keep_cached_runid) {
+    cached_runids = drf_get_cached_runids(drf=drf)
+    loig_df = loig_df[!loig_df$runid %in% cached_runids,]
+  }
+
+  drf$path_df = anti_join(path_df, loig_df, by = c("pid", "runid"))
   drf
 }
 

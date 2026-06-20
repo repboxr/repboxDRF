@@ -42,7 +42,9 @@ drf_stata_cmd_types = function() {
 "gcollapse", "gegen", "gcontract", "greshape", "gduplicates",
 "gstats", "gquantiles", "hashsort",
 "rangestat", "rangejoin", "asrol", "asgen", "astile", "fastxtile",
-"renvars", "labmask", "labgen", "labrecode", "sxpose"
+"renvars", "labmask", "labgen", "labrecode", "sxpose",
+
+"zscore", "zscore06"
 
       ),
     #scalar = c("scalar"),
@@ -70,6 +72,8 @@ u="load", us="load", use="load", insheet="load", infix="load", import="load", sy
     # additional commands proposed by ChatGPT
 input="mod", decode="mod", mvencode="mod", mvdecode="mod", split="mod", separate="mod", ipolate="mod", range="mod", insobs="mod", compress="mod", recast="mod", joinby="mod", cross="mod", stack="mod", xpose="mod", fillin="mod", expandcl="mod", sample="mod", bsample="mod", splitsample="mod", drawnorm="mod", statsby="mod", rolling="mod", gsort="mod", order="mod", aorder="mod", label="mod", notes="mod", duplicates="mod", describe="mod", stsplit="mod", stjoin="mod", svyset="mod", mi="mod", frame="mod", frames="mod", predictnl="mod", winsor2="mod", ereplace="mod", fcollapse="mod", fmerge="mod", gcollapse="mod", gegen="mod", gcontract="mod", greshape="mod", gduplicates="mod", gstats="mod", gquantiles="mod", hashsort="mod", rangestat="mod", rangejoin="mod", asrol="mod", asgen="mod", astile="mod", fastxtile="mod", renvars="mod", labmask="mod", labgen="mod", labrecode="mod", sxpose="mod",
 
+    zscore = "mod", zscore06 = "mod",
+
 
     reg="reg", areg="reg", ivregress="reg", ivreg="reg", ivreg2="reg", sureg="reg", reghdfe="reg", reg2hdfe="reg", xtreg="reg", xtivreg2="reg", xtlogit="reg", xtprobit="reg", xttobit="reg", regress="reg", cgmreg="reg", intreg="reg", boxcox="reg", qreg="reg", truncreg="reg", cnsreg="reg", eivreg="reg", nl="reg", rreg="reg", bsqreg="reg", sqreg="reg", iqreg="reg", vwls="reg", sem="reg", gsem="reg", glm="reg", cloglog="reg", logit="reg", logistic="reg", blogit="reg", glogit="reg", binreg="reg", scobit="reg", probit="reg", dprobit="reg", ivprobit="reg", bprobit="reg", gprobit="reg", hetprobit="reg", heckprobit="reg", biprobit="reg", tobit="reg", ivtobit="reg", clogit="reg", oprobit="reg", ologit="reg", heckoprobit="reg", rologit="reg", asroprobit="reg", slogit="reg", mlogit="reg", asclogit="reg", nlogit="reg", asmprobit="reg", mprobit="reg", poisson="reg", ivpoisson="reg", nbreg="reg", gnbreg="reg", tpoisson="reg", tnbreg="reg", zip="reg", zinb="reg", exlogistic="reg", expoisson="reg", arch="reg", frontier="reg", reg3="reg", heckman="reg", etregress="reg", etpoisson="reg", arima="reg", arfima="reg", newey="reg", var="reg", svar="reg", vec="reg", dfactor="reg", ppmlhdfe="reg", svyreg="reg", ppml="reg", rd="quasi_reg", rdrobust="quasi_reg", psmatch2="quasi_reg", leebounds="quasi_reg", a2reg="quasi_reg", xtabond2="quasi_reg", altrdrobust="quasi_reg", hausman="quasi_reg", stcox="reg", xtivreg="reg", ivreghdfe="reg", condivreg="quasi_reg", xtpoisson="reg", newey2="reg", hetprob="quasi_reg", reg2hdfespatial="quasi_reg", outreg2="post_reg", estadd="post_reg", estimates="post_reg", predict="mod", dfbeta="mod", test="post_reg", matrix="post_reg", est="post_reg", outreg="post_reg", eststo="post_reg", testparm="post_reg", lincom="post_reg", esttab="post_reg", margins="post_reg", estout="post_reg", estat="post_reg", nlcom="post_reg", plotcoeffs="post_reg", mfx="post_reg", boottest="post_reg", regsave="post_reg", center_estimates="post_reg", estimate="post_reg", est2vec="post_reg", suest="post_reg", fitstat="post_reg", parmest="post_reg", post="post_reg", estpost="post_reg", savereg="post_reg", wild="post_reg", rivtest="post_reg", sigstar2="post_reg", modl="post_reg", svmat="post_reg", sig_p="post_reg", ttest="post_reg", lincomestadd="post_reg", coefplot="post_reg", eret2="post_reg", get_coef="post_reg", cgmwildboot="post_reg", vareffects="post_reg", bootwildct="post_reg", post_param="post_reg", avplot="post_reg", addtotable="post_reg", margin="post_reg", vce2way="post_reg", save_results="post_reg", ivstack="post_reg", predictnl="post_reg", spatdiag="post_reg", parmby="post_reg", testnl="post_reg", b_xt="post_reg", V_xt="post_reg", p_vals="post_reg", inteff="post_reg", est2tex="post_reg", meff="post_reg", marginsplot="post_reg", iv_stack="post_reg", dfuller="post_reg", ivhettest="post_reg", pValueFormatting="post_reg", estwrite="post_reg", dfbeta="post_reg", margeff="post_reg", modltbl="post_reg", outsheet="post_reg", outtex="post_reg", lincomest="post_reg", mfx2="post_reg", addstars="post_reg",
     xtset="xtset",tsset="xtset",iis="xtset", stset="xtset"
@@ -77,6 +81,12 @@ input="mod", decode="mod", mvencode="mod", mvdecode="mod", split="mod", separate
 }
 
 
+# cmds which cannot be translated to R and generate data
+# and we would like to cache if R regressions with that command
+# in data preparation path fail
+drf_cmds_to_cache_if_r_reg_fails = function() {
+  c("zscore06","predict","predictnl")
+}
 
 pide_possible_mod_cmd_real_mod = function(run.df) {
   restore.point("pide_possible_mod_cmd_real_mod_cmd")
