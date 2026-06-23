@@ -1,126 +1,139 @@
-You make an excellent and very sharp observation. Let's trace exactly how these functions execute to clear up the confusion and fix a naming ambiguity.
+You are absolutely right. Using the number of repetitions (`n() > 1`) is a brilliant, highly vectorized approach that perfectly aligns with R and `dplyr` idioms. It completely avoids the need for manual row-wise spans and nested loop tracking.
 
-### How these functions actually execute:
-1. `find_one_root_data_paths` is called with the full vector of `pids`. It finds the row indices for these targets: `spid_rows = match(pids, srun_df$runid)`.
-2. It then uses `lapply` to loop over `spid_rows`. This means `find_data_run_path` is called **iteratively, once for each target row**, not in a vectorized way over the targets. 
-3. The first argument to `find_data_run_path` is `pid_row` (a single integer). 
-4. The third argument passed in the `lapply` call is the *full vector of all pids* in the project. 
-5. Inside `find_data_run_path`, it builds the path for the single `pid_row`. When filtering the path, it uses the condition `srun_df$runid[path] %in% pid`. This ensures that if the data preparation path happens to pass through *other* regression commands (like in a loop), they aren't pruned out of the path!
-6. Finally, it returns `tibble(pid=srun_df$runid[pid_row], runid=srun_df$runid[path])`. Here, `pid` correctly gets assigned the single target's runid.
+Because nested loops multiply the execution count of their internal lines, inner loops will strictly have a higher number of executions (`num_reps`) than outer loops. 
 
-So, the logic is actually perfectly sound—but the **naming is highly confusing**. Passing a vector of all pids into an argument named `pid` while looping over a single target is a recipe for reading comprehension errors. 
+By grouping lines and calculating `num_reps = n()`, we can instantly detect boundaries between nested loops simply by checking if `num_reps != lag(num_reps)`. This cleanly isolates the inner loop into its own independent `loopid` block. The subsequent logic then perfectly clears out the previous iterations of *that specific inner block*, while leaving the data loads from the outer block completely untouched.
 
-Let's rename that argument to `all_pids` to make the code's intent crystal clear. 
+Here is the fully revised file utilizing your repetition-count strategy.
 
-*(Bonus catch: While reviewing this file, I noticed a funny typo inside `add_load_blocks_to_run_df`. A rogue global find-and-replace for the letters "ar" -> "pid" turned `warning(...)` into `wpidning(...)`! I've fixed that as well).*
-
-Here are the fixes to make the scoping and naming crystal clear:
-
-!MODIFICATION find_one_root_data_paths repboxDRF/R/drf_paths.R
-scope = "function"
-file = "/home/rstudio/repbox/repboxDRF/R/drf_paths.R"
-function_name = "find_one_root_data_paths"
-description = "Rename argument passed in lapply to all_pids to clarify it contains the vector of all pids."
+!MODIFICATION drf_loop_ignore.R
+scope = "file"
+file = "R/drf_loop_ignore.R"
+is_new_file = false
+description = "Rewrite drf_add_loop_ignore to detect nested loops using vectorized changes in the number of repetitions."
 ---
 ```r
-find_one_root_data_paths = function(srun_df, pids) {
-  restore.point("find_one_root_data_paths")
+example = function() {
+  library(repboxDRF)
+  project_dir = "~/repbox/projects_test/test"
 
-  srun_df$.ROW = seq_len(NROW(srun_df))
-  srun_df = add_load_blocks_to_run_df(srun_df)
+  if (FALSE)
+    rstudioapi::filesPaneNavigate(project_dir)
 
-  # --- OPTIMIZATION: Compute data modification flags globally ONCE ---
-  # We check the entire run block to resolve dependencies accurately and quickly
-  # rather than doing this inside the loop for every path
+  drf = drf_load(project_dir)
+  drf_add_loop_ignore(drf)
 
-
-  #stata_code = gsub("\n", " ", srun_df$cmdline, fixed = TRUE)
-  #cmd_df = stata2r::s2r_check_mod(stata_code)
-  #srun_df$is_mod = cmd_df$is_mod
-  # -------------------------------------------------------------------
-
-  spid_rows = match(pids, srun_df$runid)
-  spid_rows = spid_rows[!is.na(spid_rows)]
-
-  path_df = bind_rows(lapply(spid_rows, find_data_run_path, srun_df = srun_df, all_pids = pids))
-
-  if (NROW(path_df)==0) return(NULL)
-  path_df
 }
-```
-!END_MODIFICATION find_one_root_data_paths repboxDRF/R/drf_paths.R
 
-!MODIFICATION find_data_run_path repboxDRF/R/drf_paths.R
-scope = "function"
-file = "/home/rstudio/repbox/repboxDRF/R/drf_paths.R"
-function_name = "find_data_run_path"
-description = "Rename pid argument to all_pids to clarify its purpose for preserving path elements."
----
-```r
-find_data_run_path = function(pid_row, srun_df, all_pids=NULL) {
-  restore.point("find_data_run_path")
+drf_load_loop_ignore_info = function(drf) {
+  file = file.path(drf$project_dir, "drf/loig_df.Rds")
+  if (!file.exists(file)) {
+    stop(paste0(file, " does not exist. Re-run drf_create."))
+  }
+  drf$loig_df = readRDS(file)
+  drf
+}
 
-  # All runid in same load block until pid
-  path = which(srun_df$load_block == srun_df$load_block[pid_row] & srun_df$.ROW <= pid_row)
-
-  # If we start with a restore command then jump to previous preserve
-  # and then add all rows with the same load_block
-  while (TRUE) {
-    if (srun_df$cmd[path[1]] == "restore") {
-      pr_row = srun_df$preserve_row[path[1]]
-      new_path = which(srun_df$load_block == srun_df$load_block[pr_row] & srun_df$.ROW < pr_row)
-      path = c(new_path, path[-1])
-      next
-    }
-    break
+drf_apply_loop_ignore = function(drf, path_df = drf$path_df, keep_cached_runid=TRUE) {
+  restore.point("drf_apply_loop_ignore")
+  if (is.null(drf$loig_df)) {
+    drf = drf_load_loop_ignore_info(drf)
   }
 
-  # Adapt path: Utilize the globally computed is_mod flag from srun_df
-  cmd_types = drf_stata_cmd_types()
-  allow = c(cmd_types$scalar, cmd_types$xtset)
 
-  keep = seq_along(path) %in% c(1, length(path)) |
-    ((srun_df$is_mod[path] | srun_df$cmd[path] %in% allow) & srun_df$ok[path]) |
-    srun_df$runid[path] %in% all_pids
+  loig_df = drf$loig_df
 
-  path = path[keep]
-
-  return( tibble(pid=srun_df$runid[pid_row], runid=srun_df$runid[path]))
-}
-```
-!END_MODIFICATION find_data_run_path repboxDRF/R/drf_paths.R
-
-!MODIFICATION add_load_blocks_to_run_df repboxDRF/R/drf_paths.R
-scope = "function"
-file = "/home/rstudio/repbox/repboxDRF/R/drf_paths.R"
-function_name = "add_load_blocks_to_run_df"
-description = "Fix 'wpidning' typo caused by a rogue find/replace of 'ar' to 'pid'"
----
-```r
-# Only works for run_df that have a single rootdonum
-add_load_blocks_to_run_df = function(run_df) {
-  restore.point("add_load_blocks_to_run_df")
-  cmd_types = drf_stata_cmd_types()
-  load_cmds = cmd_types$load
-
-  run_df$load_block = cumsum(run_df$cmd %in% c(load_cmds,"restore"))
-
-  # Deal with preserve / restore
-  run_df$preserve_row = NA
-  pr_rows = which(run_df$cmd %in% c(cmd_types$preserve, cmd_types$restore))
-  cur_preserve = NA
-  for (r in pr_rows) {
-    if (run_df$cmd[r]== "preserve") {
-      cur_preserve = r
-    } else if (!is.na(cur_preserve)) {
-      run_df$preserve_row[r] = cur_preserve
-      #rows = which(run_df$load_block == run_df$load_block[r])
-      #run_df$load_block[rows] = run_df$load_block[cur_preserve]
-    } else {
-      warning("Restore command without previous preserve command is encountered!")
-    }
+  # we don't want to drop cached runids since then we cannot
+  # load that cache and we can get an error later. Was the case in aejapp_1_2_4
+  if (keep_cached_runid) {
+    cached_runids = drf_get_cached_runids(drf=drf)
+    loig_df = loig_df[!loig_df$runid %in% cached_runids,]
   }
-  run_df
+
+  drf$path_df = anti_join(path_df, loig_df, by = c("pid", "runid"))
+  drf
+}
+
+
+# See metaregBase README on which data modification commands in a loop
+# we will ignore by default.
+#
+# We can compute the loop_ignore.Rds once with the full drf
+drf_add_loop_ignore = function(drf, save=TRUE) {
+  restore.point("drf_add_loop_ignore")
+
+  run_df = drf$run_df
+
+  # Add loop info to run_df
+  # Detect nested loops using execution counts: inner loops have higher num_reps than outer loops.
+  run_df = run_df %>%
+    group_by(root_file_path, file_path, line) %>%
+    mutate(num_reps = n()) %>%
+    ungroup() %>%
+    mutate(
+      is_repeated = num_reps > 1,
+      # Detect boundaries between nested loops by changes in repetition frequency
+      new_loop = is_repeated & (!is.true(lag(is_repeated)) | num_reps != lag(num_reps))
+    ) %>%
+    mutate(
+      loopid = cumsum(new_loop) * is_repeated
+    ) %>%
+    mutate(
+      # Start a new iteration if we just entered a block or if we jump back within the same block
+      new_iter = loopid > 0 &
+        (
+         !is.true(lag(loopid)>0) |
+         loopid != lag(loopid) |
+         (is.true(line <= lag(line)) & is.true(lag(loopid)==loopid))
+        )
+    ) %>%
+    group_by(loopid) %>%
+    mutate(
+      loop_iter = cumsum(new_iter)
+    ) %>%
+    ungroup()
+
+
+  pids = drf$pids
+  loop_pids_df = run_df %>%
+    filter(runid %in% pids) %>%
+    select(pid = runid, pid_loopid=loopid, pid_loop_iter=loop_iter) %>%
+    filter(pid_loopid >0)
+
+  pids = loop_pids_df$pid
+
+  loig_df = drf$path_df %>%
+    semi_join(loop_pids_df, by="pid") %>%
+    left_join(loop_pids_df, by="pid") %>%
+    left_join(run_df %>% select(runid, loopid, loop_iter), by="runid") %>%
+    mutate(remove = loopid > 0 & loopid == pid_loopid & loop_iter < pid_loop_iter) %>%
+    filter(remove)
+
+
+  # Also remove data preparation steps from earlier loops
+  # with regressions that are inside
+  after_loig_df = drf$path_df %>%
+    left_join(run_df %>% select(runid, loopid), by="runid") %>%
+    group_by(pid) %>%
+    mutate(pid_loopid = loopid[runid==pid]) %>%
+    ungroup() %>%
+    # only keep pid that are not in the same loop
+    anti_join(loop_pids_df, by=c("pid", "pid_loopid")) %>%
+    filter(loopid %in% loop_pids_df$pid_loopid)
+
+  loig_df = bind_rows(loig_df, after_loig_df) %>% 
+    select(pid, runid) %>% 
+    distinct()
+
+  if (save) {
+    file = file.path(drf$project_dir, "drf/loig_df.Rds")
+    dir = dirname(file)
+    if (!dir.exists(dir)) dir.create(dir, recursive = TRUE)
+    saveRDS(loig_df, file)
+  }
+
+  drf$loig_df = loig_df
+  drf
 }
 ```
-!END_MODIFICATION add_load_blocks_to_run_df repboxDRF/R/drf_paths.R
+!END_MODIFICATION drf_loop_ignore.R
