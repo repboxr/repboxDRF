@@ -23,6 +23,10 @@ drf_load = function(project_dir, parcels=list(), apply_caches=TRUE) {
 
   drf$path_df = drf_load_path_df(drf=drf)
 
+  if (FALSE) {
+    unique(drf$path_df$pid)
+  }
+
   # Check if paths are broken (e.g. missing cache files)
   if (!drf_check_path_df(drf)) {
     cat("\nMissing cache files detected for starting paths. Recreating DRF to restore full paths...\n")
