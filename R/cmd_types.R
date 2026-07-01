@@ -81,11 +81,11 @@ input="mod", decode="mod", mvencode="mod", mvdecode="mod", split="mod", separate
 }
 
 
-# cmds which cannot be translated to R and generate data
+# cmds which cannot be consistently translated to R and generate data
 # and we would like to cache if R regressions with that command
 # in data preparation path fail
 drf_cmds_to_cache_if_r_reg_fails = function() {
-  c("zscore06","predict","predictnl")
+  c("zscore06","predict","predictnl", "reshape")
 }
 
 pide_possible_mod_cmd_real_mod = function(run.df) {
