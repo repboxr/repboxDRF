@@ -88,6 +88,12 @@ drf_cmds_to_cache_if_r_reg_fails = function() {
   c("zscore06","predict","predictnl", "reshape")
 }
 
+# cmdline patterns (like custom functions) which cannot be consistently translated to R
+# and we would like to cache if R regressions with that command in data preparation path fail
+drf_cmdline_patterns_to_cache_if_r_reg_fails = function() {
+  c("peer(")
+}
+
 pide_possible_mod_cmd_real_mod = function(run.df) {
   restore.point("pide_possible_mod_cmd_real_mod_cmd")
   is.mod = rep(TRUE, NROW(run.df))

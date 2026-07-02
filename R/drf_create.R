@@ -45,7 +45,7 @@ drf_create = function(project_dir, parcels=list(), acmds = drf_acmds(), overwrit
   drf$runids = drf_runids(drf)
 
   drf_copy_org_data(drf=drf, move_from_mod=move_from_mod)
-
+  drf_copy_ado_files(project_dir = project_dir)
 
   drf = drf_add_loop_ignore(drf)
 

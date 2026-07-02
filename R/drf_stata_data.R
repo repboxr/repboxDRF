@@ -229,3 +229,26 @@ drf_copy_org_data = function(project_dir=drf$project_dir, run_df=drf$run_df, run
   return(invisible(NULL))
 }
 
+drf_copy_ado_files = function(project_dir) {
+  restore.point("drf_copy_ado_files")
+  src_dir = file.path(project_dir, "mod")
+  dest_dir = file.path(project_dir, "drf", "ado")
+
+  if (!dir.exists(src_dir)) return(invisible(NULL))
+
+  # File extensions commonly used for Stata programs, libraries, schemes
+  exts = c("ado", "mata", "mlib", "scheme", "style", "sthlp", "hlp", "plugin", "dll", "so")
+  pattern = paste0("\\.(", paste(exts, collapse = "|"), ")$")
+
+  files = list.files(src_dir, pattern = pattern, full.names = FALSE, recursive = TRUE, ignore.case = TRUE)
+
+  if (length(files) > 0) {
+    for (f in files) {
+      src_file = file.path(src_dir, f)
+      dest_file = file.path(dest_dir, f)
+      dir.create(dirname(dest_file), recursive = TRUE, showWarnings = FALSE)
+      file.copy(src_file, dest_file, overwrite = TRUE)
+    }
+  }
+  invisible(NULL)
+}
